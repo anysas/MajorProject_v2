@@ -3829,7 +3829,7 @@ MonoBehaviour:
   crawlSpeedMax: 11.4
   pushWindowMin: 4.06
   pushWindowMax: 5.29
-  expireBlinkSeconds: 1.25
+  expireBlinkSeconds: 2
   finishPush: 4.3
   edgeRecedeLerp: 6
   consumeDuration: 0.85

@@ -55,7 +55,7 @@ public class TrashPiles : MonoBehaviour
     [SerializeField] float crawlSpeedMax = 11.4f;
     [SerializeField, Tooltip("How long a landed block can be pushed before the pile swallows it.")] float pushWindowMin = 2.75f;
     [SerializeField, Tooltip("Longest time a landed block waits for a push.")] float pushWindowMax = 4.25f;
-    [SerializeField, Tooltip("How long before an unpushed piece disappears it starts blinking.")] float expireBlinkSeconds = 1.25f;
+    [SerializeField, Tooltip("How long before an unpushed piece disappears it starts blinking.")] float expireBlinkSeconds = 2f;
     [SerializeField, Tooltip("Fallback recede distance after a swallow, if EventsHandler is missing.")] float finishPush = 4.3f;
     [SerializeField, Tooltip("How quickly a receding edge eases into place. Higher is snappier.")] float edgeRecedeLerp = 6f;
     [SerializeField] float consumeDuration = 0.85f;
@@ -1361,7 +1361,7 @@ public class TrashPiles : MonoBehaviour
 
         PrepareConsumeFade(index);
         float urgency = 1f - Mathf.Clamp01(despawnLeft[index] / warn);
-        float interval = Mathf.Lerp(1.6f, 1.15f, urgency);
+        float interval = Mathf.Lerp(2.8f, 2f, urgency);
         float wave = 0.5f + 0.5f * Mathf.Sin((Time.time / interval + index * 0.17f) * Mathf.PI * 2f);
         SetBlockOpacity(index, Mathf.Lerp(0.18f, 1f, wave));
     }
