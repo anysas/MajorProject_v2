@@ -185,6 +185,16 @@ public class ExperienceRestart : MonoBehaviour
 
     void ShowFinishedTime()
     {
+        if (GameTimer.ShowHudOnEndScreen())
+        {
+            if (finishedTimeText != null)
+            {
+                finishedTimeText.gameObject.SetActive(false);
+            }
+
+            return;
+        }
+
         EnsureFinishedTimeText();
         if (finishedTimeText == null)
         {
