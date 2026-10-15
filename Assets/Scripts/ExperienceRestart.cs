@@ -11,6 +11,7 @@ public class ExperienceRestart : MonoBehaviour
 {
     public static bool HasStarted { get; private set; } = true;
     public static bool IsEnded { get; private set; }
+    public static int StartedFrame { get; private set; } = -1;
     public static bool IsActive => HasStarted && !IsEnded;
 
     [SerializeField] Button restartButton;
@@ -27,6 +28,7 @@ public class ExperienceRestart : MonoBehaviour
     {
         HasStarted = true;
         IsEnded = false;
+        StartedFrame = -1;
     }
 
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
@@ -48,6 +50,7 @@ public class ExperienceRestart : MonoBehaviour
     {
         HasStarted = false;
         IsEnded = false;
+        StartedFrame = -1;
     }
 
     public static void NotifyStarted()
@@ -58,6 +61,7 @@ public class ExperienceRestart : MonoBehaviour
         }
 
         HasStarted = true;
+        StartedFrame = Time.frameCount;
         GameTimer.StartTiming();
     }
 

@@ -128,6 +128,8 @@ public class TrashPiles : MonoBehaviour
     float[] recedeLeft;
     float[] shoveDepth;
     float[] blockGroundY;
+    Vector3[] edgeMidBefore;
+    Vector3[] edgeOutBefore;
     Quaternion[] blockSpin;
     Vector3[] blockBaseScale;
     bool[] consumeFadeReady;
@@ -220,6 +222,7 @@ public class TrashPiles : MonoBehaviour
 
         ClearPushedFlags();
         PushContactingBlocks();
+        CaptureEdgeFrame();
         ApplyRecede();
         ApplyIdleOrCreep();
         UpdateBlockLife();
@@ -228,6 +231,7 @@ public class TrashPiles : MonoBehaviour
             ApplyShape();
         }
 
+        CarryShovedTrashWithPile();
         ApplyBlockVisuals();
         ContainTruckInPlayArea();
         CheckFailFromDangerZone();
@@ -1433,6 +1437,59 @@ public class TrashPiles : MonoBehaviour
         ApplyBlockTransform(index, pos, BlockSpin(index));
     }
 
+    void CaptureEdgeFrame()
+    {
+        if (edgeMidBefore == null || edgeOutBefore == null || corners == null)
+        {
+            return;
+        }
+
+        for (int i = 0; i < count; i++)
+        {
+            edgeMidBefore[i] = EdgeMid(i);
+            edgeOutBefore[i] = EdgeOutward(i);
+        }
+    }
+
+    void CarryShovedTrashWithPile()
+    {
+        if (blockLife == null || crawlPos == null || edgeMidBefore == null || edgeOutBefore == null)
+        {
+            return;
+        }
+
+        for (int i = 0; i < count; i++)
+        {
+            if (blockLife[i] != BlockLife.Shoving)
+            {
+                continue;
+            }
+
+            Vector3 oldOut = edgeOutBefore[i];
+            oldOut.y = 0f;
+            if (oldOut.sqrMagnitude < 0.0001f)
+            {
+                oldOut = EdgeOutward(i);
+            }
+            else
+            {
+                oldOut.Normalize();
+            }
+
+            Vector3 newOut = EdgeOutward(i);
+            Vector3 oldTangent = new Vector3(-oldOut.z, 0f, oldOut.x);
+            Vector3 newTangent = new Vector3(-newOut.z, 0f, newOut.x);
+            Vector3 rel = crawlPos[i] - edgeMidBefore[i];
+            rel.y = 0f;
+            float along = Vector3.Dot(rel, oldOut);
+            float side = Vector3.Dot(rel, oldTangent);
+            Vector3 pos = EdgeMid(i) + newOut * along + newTangent * side;
+            pos.y = blockGroundY != null ? blockGroundY[i] : crawlPos[i].y;
+            crawlPos[i] = pos;
+            RefreshShoveDepth(i);
+        }
+    }
+
     void CheckSwallow(int index)
     {
         if (blockLife[index] != BlockLife.Shoving)
@@ -2233,6 +2290,8 @@ public class TrashPiles : MonoBehaviour
         recedeLeft = new float[count];
         shoveDepth = new float[count];
         blockGroundY = new float[count];
+        edgeMidBefore = new Vector3[count];
+        edgeOutBefore = new Vector3[count];
         blockSpin = new Quaternion[count];
         blockBaseScale = new Vector3[count];
         consumeFadeReady = new bool[count];

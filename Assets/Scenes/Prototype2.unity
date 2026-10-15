@@ -1741,17 +1741,19 @@ MonoBehaviour:
   hornClip: {fileID: 8300000, guid: 396cdda43bebc384a97adce557abe547, type: 3}
   hornVolume: 0.36
   birdScale: 0.4
+  flapClip: {fileID: 0}
+  flapSpeed: 1.6
   spawnIntervalMin: 6.59
   spawnIntervalMax: 14.2
   circleBeforeStun: 3
   stunDuration: 1
-  spawnDistanceMin: 28
-  spawnDistanceMax: 40
+  spawnDistanceMin: 56
+  spawnDistanceMax: 84
   spawnHeightMin: 17.7
   spawnHeightMax: 18
   swoopSpeed: 28
-  circleHeight: 6.5
-  circleRadius: 7.29
+  circleHeight: 11
+  circleRadius: 13
   circleSpeed: 230
   fleeSpeed: 36
 --- !u!1 &851600100
@@ -3891,7 +3893,7 @@ Transform:
   m_GameObject: {fileID: 1860440728}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: -95.77, y: 2.87, z: 20.1}
+  m_LocalPosition: {x: -95.77, y: 5.9, z: 20.1}
   m_LocalScale: {x: 1.48, y: 1, z: 1.57}
   m_ConstrainProportionsScale: 0
   m_Children:
