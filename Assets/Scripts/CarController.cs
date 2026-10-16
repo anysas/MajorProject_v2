@@ -389,27 +389,27 @@ public class CarController : MonoBehaviour
         main.playOnAwake = false;
         main.loop = true;
         main.duration = 1f;
-        main.startLifetime = new ParticleSystem.MinMaxCurve(1.15f, 1.9f);
-        main.startSpeed = new ParticleSystem.MinMaxCurve(0.45f, 0.95f);
-        main.startSize = new ParticleSystem.MinMaxCurve(0.7f, 1.35f);
+        main.startLifetime = new ParticleSystem.MinMaxCurve(1.8f, 2.8f);
+        main.startSpeed = new ParticleSystem.MinMaxCurve(0.85f, 1.65f);
+        main.startSize = new ParticleSystem.MinMaxCurve(1.25f, 2.4f);
         main.startColor = stunCloudColor;
         main.startRotation = new ParticleSystem.MinMaxCurve(0f, Mathf.PI * 2f);
         main.simulationSpace = ParticleSystemSimulationSpace.World;
         main.scalingMode = ParticleSystemScalingMode.Local;
-        main.gravityModifier = -0.22f;
-        main.maxParticles = 28;
+        main.gravityModifier = -0.45f;
+        main.maxParticles = 42;
         main.prewarm = false;
 
         ParticleSystem.EmissionModule emission = particles.emission;
         emission.enabled = true;
-        emission.rateOverTime = 7f;
+        emission.rateOverTime = 11f;
         emission.burstCount = 0;
 
         ParticleSystem.ShapeModule shape = particles.shape;
         shape.enabled = true;
         shape.shapeType = ParticleSystemShapeType.Cone;
-        shape.angle = 18f;
-        shape.radius = 0.08f;
+        shape.angle = 36f;
+        shape.radius = 0.22f;
         shape.radiusThickness = 1f;
         shape.rotation = new Vector3(-90f, 0f, 0f);
         shape.alignToDirection = false;
@@ -435,9 +435,9 @@ public class CarController : MonoBehaviour
         ParticleSystem.SizeOverLifetimeModule sizeOverLifetime = particles.sizeOverLifetime;
         sizeOverLifetime.enabled = true;
         AnimationCurve grow = new AnimationCurve(
-            new Keyframe(0f, 0.4f),
-            new Keyframe(0.3f, 1.1f),
-            new Keyframe(1f, 1.75f));
+            new Keyframe(0f, 0.45f),
+            new Keyframe(0.3f, 1.45f),
+            new Keyframe(1f, 2.6f));
         sizeOverLifetime.size = new ParticleSystem.MinMaxCurve(1f, grow);
 
         ParticleSystem.RotationOverLifetimeModule spin = particles.rotationOverLifetime;
@@ -455,9 +455,9 @@ public class CarController : MonoBehaviour
         ParticleSystem.VelocityOverLifetimeModule drift = particles.velocityOverLifetime;
         drift.enabled = true;
         drift.space = ParticleSystemSimulationSpace.World;
-        drift.x = new ParticleSystem.MinMaxCurve(-0.12f, 0.12f);
-        drift.y = new ParticleSystem.MinMaxCurve(0.2f, 0.55f);
-        drift.z = new ParticleSystem.MinMaxCurve(-0.12f, 0.12f);
+        drift.x = new ParticleSystem.MinMaxCurve(-0.42f, 0.42f);
+        drift.y = new ParticleSystem.MinMaxCurve(0.6f, 1.25f);
+        drift.z = new ParticleSystem.MinMaxCurve(-0.42f, 0.42f);
 
         renderer.renderMode = ParticleSystemRenderMode.Billboard;
         renderer.sharedMaterial = stunCloudMaterial;
@@ -465,7 +465,7 @@ public class CarController : MonoBehaviour
         renderer.receiveShadows = false;
         renderer.lengthScale = 1f;
         renderer.minParticleSize = 0.02f;
-        renderer.maxParticleSize = 0.75f;
+        renderer.maxParticleSize = 1f;
     }
 
     Vector3 PipeMouthLocalPosition(Transform pipe)

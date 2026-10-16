@@ -374,7 +374,13 @@ public class ArduinoController : MonoBehaviour
 
     static string NormalizeKey(string keyName)
     {
-        return keyName == null ? string.Empty : keyName.Trim().ToUpperInvariant();
+        if (string.IsNullOrEmpty(keyName))
+        {
+            return string.Empty;
+        }
+
+        // The controller sends arrow names with an underscore, such as UP_ARROW.
+        return keyName.Trim().ToUpperInvariant().Replace("_", string.Empty).Replace("-", string.Empty).Replace(" ", string.Empty);
     }
 
     void Shutdown()
