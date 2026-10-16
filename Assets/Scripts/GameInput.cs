@@ -8,7 +8,9 @@ public static class GameInput
     static Xboxcontroller instance;
 
     // Xbox holds the right trigger for the arm and toggles headlights with B.
-    // Keyboard holds the arm and toggles headlights. Arduino switches stay on only while held.
+    // Keyboard holds the arm and toggles headlights.
+    // The Arduino arm switch is reversed: holding it lowers the arm, releasing it raises the arm.
+    // Other Arduino switches stay on only while held.
     static bool headlightLatched;
 
     public static Xboxcontroller Actions
@@ -66,8 +68,19 @@ public static class GameInput
         }
     }
 
-    public static bool ArmUpHeld =>
-        ArduinoController.ArmUpHeld || ActionHeld(Actions.Truck.ArmUp);
+    public static bool ArmUpHeld
+    {
+        get
+        {
+            // Held Arduino up switch forces the arm down. Released raises it.
+            if (ArduinoController.IsDeviceConnected && ArduinoController.ArmUpHeld)
+            {
+                return false;
+            }
+
+            return ArduinoController.IsDeviceConnected || ActionHeld(Actions.Truck.ArmUp);
+        }
+    }
 
     public static bool HeadlightHeld => ArduinoController.HeadlightHeld || headlightLatched;
 
