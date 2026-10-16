@@ -2381,12 +2381,12 @@ MonoBehaviour:
   multiExplosionFromPressure: 0.42
   explosionFirstDelay: 13
   creepSpeedEasy: 0.7
-  creepSpeedHard: 1.65
+  creepSpeedHard: 1.45
   creepBoostFromRadius: 16
   creepBoostAtRadius: 24
   creepAreaBoost: 1.85
   stallSecondsEasy: 3.4
-  stallSecondsHard: 0.65
+  stallSecondsHard: 1
   finishPushEasy: 7.28
   finishPushHard: 7.28
   pushRestoreFromRadius: 16
@@ -4403,7 +4403,7 @@ MonoBehaviour:
   playAreaMargin: 3
   gameSectionFill: 0.995
   dangerZoneRadius: 10.84
-  failTrashCount: 3
+  failTrashCount: 2
   failHoldSeconds: 1.3
   frontPushDot: 0
   pushReach: 0.65
@@ -4421,9 +4421,9 @@ MonoBehaviour:
   consumeRiseHeight: 2.4
   respawnDelayMin: 0.5
   respawnDelayMax: 1.25
-  targetLiveTrash: 5
+  targetLiveTrash: 3
   targetLiveTrashLate: 7
-  maxIncomingTrash: 3
+  maxIncomingTrash: 1
   maxIncomingTrashLate: 4
   spawnInterval: 0.45
   spawnIntervalLate: 0.2
