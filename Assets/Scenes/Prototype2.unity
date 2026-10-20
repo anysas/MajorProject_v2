@@ -4719,7 +4719,7 @@ MonoBehaviour:
   respawnDelayMax: 1.25
   targetLiveTrash: 3
   targetLiveTrashLate: 7
-  maxIncomingTrash: 1
+  maxIncomingTrash: 3
   maxIncomingTrashLate: 4
   spawnInterval: 0.45
   spawnIntervalLate: 0.2

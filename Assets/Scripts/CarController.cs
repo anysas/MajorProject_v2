@@ -1417,7 +1417,9 @@ public class CarController : MonoBehaviour
         float raiseT = Mathf.Abs(armRaisedX - armRestX) > 0.001f
             ? Mathf.InverseLerp(armRestX, armRaisedX, armX)
             : 1f;
-        if (DayNightCycle.IsNight && !GameInput.HeadlightHeld)
+        bool headlightsOn = GameInput.HeadlightHeld;
+        bool lightsWrongForTime = DayNightCycle.IsNight ? !headlightsOn : headlightsOn;
+        if (lightsWrongForTime)
         {
             raiseT = 0f;
         }
