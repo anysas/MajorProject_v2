@@ -125,7 +125,9 @@ public class HealthHearts : MonoBehaviour
                 continue;
             }
 
-            float target = i < Lives ? 1f : 0f;
+            // Scoop 1 is index 0, so the first hit clears 1, then 2, then 3.
+            int lost = Mathf.Clamp(MaxLives - Lives, 0, hearts.Length);
+            float target = i < lost ? 0f : 1f;
             shown[i] = Mathf.MoveTowards(shown[i], target, step);
             float fill = shown[i];
             Color color = hearts[i].color;
@@ -133,7 +135,7 @@ public class HealthHearts : MonoBehaviour
             hearts[i].color = color;
 
             float scale = 1f;
-            if (i >= Lives && fill > 0.02f && fill < 0.98f)
+            if (i < lost && fill > 0.02f && fill < 0.98f)
             {
                 scale = 1f + Mathf.Sin((1f - fill) * Mathf.PI) * 0.3f;
             }
@@ -192,16 +194,19 @@ public class HealthHearts : MonoBehaviour
             return false;
         }
 
-        Image[] scoops = new Image[images.Length];
+        Image[] scoops = new Image[MaxLives];
         int count = 0;
         for (int i = 0; i < images.Length; i++)
         {
             Image image = images[i];
-            if (image != null && image.gameObject.name.StartsWith("scoop", System.StringComparison.OrdinalIgnoreCase))
+            int number = image != null ? ScoopNumber(image.gameObject.name) : 0;
+            if (number < 1 || number > MaxLives || scoops[number - 1] != null)
             {
-                scoops[count] = image;
-                count++;
+                continue;
             }
+
+            scoops[number - 1] = image;
+            count++;
         }
 
         if (count == 0)
@@ -209,38 +214,60 @@ public class HealthHearts : MonoBehaviour
             return false;
         }
 
-        for (int i = 1; i < count; i++)
+        hearts = new Image[count];
+        shown = new float[count];
+        int used = 0;
+        for (int i = 0; i < scoops.Length; i++)
         {
-            Image current = scoops[i];
-            float x = ScoopX(current);
-            int j = i - 1;
-            while (j >= 0 && ScoopX(scoops[j]) > x)
+            if (scoops[i] == null)
             {
-                scoops[j + 1] = scoops[j];
-                j--;
+                continue;
             }
 
-            scoops[j + 1] = current;
-        }
-
-        int used = Mathf.Min(count, MaxLives);
-        hearts = new Image[used];
-        shown = new float[used];
-        for (int i = 0; i < used; i++)
-        {
-            hearts[i] = scoops[i];
-            hearts[i].raycastTarget = false;
-            shown[i] = 1f;
+            hearts[used] = scoops[i];
+            hearts[used].raycastTarget = false;
+            shown[used] = 1f;
+            used++;
         }
 
         healthRoot = health != null ? health : hearts[0].transform.parent.gameObject;
         return true;
     }
 
-    static float ScoopX(Image image)
+    static int ScoopNumber(string objectName)
     {
-        RectTransform rect = image.rectTransform;
-        return rect != null ? rect.anchoredPosition.x : image.transform.position.x;
+        if (string.IsNullOrEmpty(objectName))
+        {
+            return 0;
+        }
+
+        if (objectName.IndexOf("white", System.StringComparison.OrdinalIgnoreCase) >= 0)
+        {
+            return 0;
+        }
+
+        string trimmed = objectName.Trim();
+        bool namedScoop = trimmed.StartsWith("scoop", System.StringComparison.OrdinalIgnoreCase);
+        bool namedHeart = trimmed.StartsWith("heart", System.StringComparison.OrdinalIgnoreCase);
+        if (!namedScoop && !namedHeart)
+        {
+            return 0;
+        }
+
+        int number = 0;
+        bool foundDigit = false;
+        for (int i = 0; i < trimmed.Length; i++)
+        {
+            if (!char.IsDigit(trimmed[i]))
+            {
+                continue;
+            }
+
+            foundDigit = true;
+            number = number * 10 + (trimmed[i] - '0');
+        }
+
+        return foundDigit ? number : 0;
     }
 
     static GameObject FindNamed(string exactName)

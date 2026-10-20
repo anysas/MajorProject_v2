@@ -67,6 +67,7 @@ public class CarController : MonoBehaviour
     [SerializeField] float armFlyGravity = 9f;
     [SerializeField] float armReturnDelay = 1.6f;
     [SerializeField] float armFadeSeconds = 1.05f;
+    [SerializeField] Material[] scoopColors;
 
     public Vector3 DriveVelocity { get; private set; }
 
@@ -203,6 +204,7 @@ public class CarController : MonoBehaviour
         }
 
         SetLayerRecursive(arm, LayerMask.NameToLayer("TruckArm"));
+        ApplyScoopColor(HealthHearts.Lives);
     }
 
     static void SetLayerRecursive(Transform root, int layer)
@@ -1067,6 +1069,45 @@ public class CarController : MonoBehaviour
         }
     }
 
+    void ApplyScoopColor(int lives)
+    {
+        if (arm == null || scoopColors == null || scoopColors.Length == 0)
+        {
+            return;
+        }
+
+        int healthNumber = HealthHearts.MaxLives - Mathf.Clamp(lives, 1, HealthHearts.MaxLives) + 1;
+        int index = Mathf.Clamp(healthNumber, 1, scoopColors.Length) - 1;
+        Material material = scoopColors[index];
+        if (material == null)
+        {
+            return;
+        }
+
+        Renderer[] renderers = arm.GetComponentsInChildren<Renderer>(true);
+        for (int i = 0; i < renderers.Length; i++)
+        {
+            Renderer renderer = renderers[i];
+            if (renderer == null)
+            {
+                continue;
+            }
+
+            Material[] slots = renderer.sharedMaterials;
+            if (slots == null || slots.Length == 0)
+            {
+                continue;
+            }
+
+            for (int m = 0; m < slots.Length; m++)
+            {
+                slots[m] = material;
+            }
+
+            renderer.sharedMaterials = slots;
+        }
+    }
+
     void BeginArmReturn()
     {
         Transform parent = armMountParent != null ? armMountParent : transform;
@@ -1074,6 +1115,8 @@ public class CarController : MonoBehaviour
         arm.localPosition = armMountLocalPosition;
         arm.localScale = armMountLocalScale;
         ApplyArmRotation();
+        ApplyScoopColor(HealthHearts.Lives);
+        DestroyArmFadeMaterials();
         EnsureArmFadeMaterials();
         AssignArmFadeMaterials();
         SetArmAlpha(0f);
