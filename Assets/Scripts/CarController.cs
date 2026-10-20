@@ -22,6 +22,7 @@ public class CarController : MonoBehaviour
     [SerializeField, Tooltip("Pulls the beam back toward the truck so the light meets the body.")] float headlightInset = 1.5f;
     [SerializeField] float stunCloudHeight = 0.2f;
     [SerializeField] Color stunCloudColor = new Color(0.96f, 0.98f, 1f, 0.72f);
+    [SerializeField] Texture2D stunSmoke;
 
     Rigidbody rb;
     Transform viewCamera;
@@ -67,6 +68,7 @@ public class CarController : MonoBehaviour
     [SerializeField] float armFlyGravity = 9f;
     [SerializeField] float armReturnDelay = 1.6f;
     [SerializeField] float armFadeSeconds = 1.05f;
+    [SerializeField] Material[] scoopColors;
 
     public Vector3 DriveVelocity { get; private set; }
 
@@ -203,6 +205,7 @@ public class CarController : MonoBehaviour
         }
 
         SetLayerRecursive(arm, LayerMask.NameToLayer("TruckArm"));
+        ApplyScoopColor(HealthHearts.Lives);
     }
 
     static void SetLayerRecursive(Transform root, int layer)
@@ -324,8 +327,14 @@ public class CarController : MonoBehaviour
             return;
         }
 
-        stunCloudTexture = CreateSoftCloudTexture(96);
-        stunCloudMaterial = CreateStunCloudMaterial(stunCloudTexture);
+        Texture2D texture = stunSmoke;
+        if (texture == null)
+        {
+            stunCloudTexture = CreateSoftCloudTexture(96);
+            texture = stunCloudTexture;
+        }
+
+        stunCloudMaterial = CreateStunCloudMaterial(texture);
 
         List<Transform> pipes = CollectPipes();
         if (pipes.Count == 0)
@@ -408,7 +417,7 @@ public class CarController : MonoBehaviour
         ParticleSystem.ShapeModule shape = particles.shape;
         shape.enabled = true;
         shape.shapeType = ParticleSystemShapeType.Cone;
-        shape.angle = 36f;
+        shape.angle = 58f;
         shape.radius = 0.22f;
         shape.radiusThickness = 1f;
         shape.rotation = new Vector3(-90f, 0f, 0f);
@@ -455,9 +464,23 @@ public class CarController : MonoBehaviour
         ParticleSystem.VelocityOverLifetimeModule drift = particles.velocityOverLifetime;
         drift.enabled = true;
         drift.space = ParticleSystemSimulationSpace.World;
-        drift.x = new ParticleSystem.MinMaxCurve(-0.42f, 0.42f);
-        drift.y = new ParticleSystem.MinMaxCurve(0.6f, 1.25f);
-        drift.z = new ParticleSystem.MinMaxCurve(-0.42f, 0.42f);
+        AnimationCurve spreadIn = new AnimationCurve(
+            new Keyframe(0f, -0.25f),
+            new Keyframe(0.22f, -1.35f),
+            new Keyframe(1f, -2.15f));
+        AnimationCurve spreadOut = new AnimationCurve(
+            new Keyframe(0f, 0.25f),
+            new Keyframe(0.22f, 1.35f),
+            new Keyframe(1f, 2.15f));
+        AnimationCurve riseSlow = new AnimationCurve(
+            new Keyframe(0f, 0.6f),
+            new Keyframe(1f, 0.6f));
+        AnimationCurve riseFast = new AnimationCurve(
+            new Keyframe(0f, 1.25f),
+            new Keyframe(1f, 1.25f));
+        drift.x = new ParticleSystem.MinMaxCurve(1f, spreadIn, spreadOut);
+        drift.y = new ParticleSystem.MinMaxCurve(1f, riseSlow, riseFast);
+        drift.z = new ParticleSystem.MinMaxCurve(1f, spreadIn, spreadOut);
 
         renderer.renderMode = ParticleSystemRenderMode.Billboard;
         renderer.sharedMaterial = stunCloudMaterial;
@@ -1067,6 +1090,45 @@ public class CarController : MonoBehaviour
         }
     }
 
+    void ApplyScoopColor(int lives)
+    {
+        if (arm == null || scoopColors == null || scoopColors.Length == 0)
+        {
+            return;
+        }
+
+        int healthNumber = HealthHearts.MaxLives - Mathf.Clamp(lives, 1, HealthHearts.MaxLives) + 1;
+        int index = Mathf.Clamp(healthNumber, 1, scoopColors.Length) - 1;
+        Material material = scoopColors[index];
+        if (material == null)
+        {
+            return;
+        }
+
+        Renderer[] renderers = arm.GetComponentsInChildren<Renderer>(true);
+        for (int i = 0; i < renderers.Length; i++)
+        {
+            Renderer renderer = renderers[i];
+            if (renderer == null)
+            {
+                continue;
+            }
+
+            Material[] slots = renderer.sharedMaterials;
+            if (slots == null || slots.Length == 0)
+            {
+                continue;
+            }
+
+            for (int m = 0; m < slots.Length; m++)
+            {
+                slots[m] = material;
+            }
+
+            renderer.sharedMaterials = slots;
+        }
+    }
+
     void BeginArmReturn()
     {
         Transform parent = armMountParent != null ? armMountParent : transform;
@@ -1074,6 +1136,8 @@ public class CarController : MonoBehaviour
         arm.localPosition = armMountLocalPosition;
         arm.localScale = armMountLocalScale;
         ApplyArmRotation();
+        ApplyScoopColor(HealthHearts.Lives);
+        DestroyArmFadeMaterials();
         EnsureArmFadeMaterials();
         AssignArmFadeMaterials();
         SetArmAlpha(0f);
@@ -1374,7 +1438,9 @@ public class CarController : MonoBehaviour
         float raiseT = Mathf.Abs(armRaisedX - armRestX) > 0.001f
             ? Mathf.InverseLerp(armRestX, armRaisedX, armX)
             : 1f;
-        if (DayNightCycle.IsNight && !GameInput.HeadlightHeld)
+        bool headlightsOn = GameInput.HeadlightHeld;
+        bool lightsWrongForTime = DayNightCycle.IsNight ? !headlightsOn : headlightsOn;
+        if (lightsWrongForTime)
         {
             raiseT = 0f;
         }

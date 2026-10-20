@@ -26,17 +26,49 @@ sealed class WindowsSerialPort : IDisposable
     public static string[] GetPortNames()
     {
         List<string> ports = new List<string>();
-        char[] buffer = new char[256];
         for (int i = 1; i <= 32; i++)
         {
             string name = "COM" + i;
-            if (QueryDosDevice(name, buffer, (uint)buffer.Length) != 0)
+            string path = GetDosDevicePath(name);
+            // Bluetooth "Standard Serial over Bluetooth link" ports open without an Arduino.
+            // Treating one as connected forces the arm up and blocks the keyboard up arrow.
+            if (path.Length == 0 || path.IndexOf("BthModem", StringComparison.OrdinalIgnoreCase) >= 0)
             {
-                ports.Add(name);
+                continue;
             }
+
+            ports.Add(name);
         }
 
         return ports.ToArray();
+    }
+
+    public static bool IsBluetoothPort(string portName)
+    {
+        return GetDosDevicePath(portName).IndexOf("BthModem", StringComparison.OrdinalIgnoreCase) >= 0;
+    }
+
+    static string GetDosDevicePath(string portName)
+    {
+        if (string.IsNullOrWhiteSpace(portName))
+        {
+            return string.Empty;
+        }
+
+        char[] buffer = new char[256];
+        uint length = QueryDosDevice(portName.Trim(), buffer, (uint)buffer.Length);
+        if (length == 0)
+        {
+            return string.Empty;
+        }
+
+        int count = (int)length;
+        while (count > 0 && buffer[count - 1] == '\0')
+        {
+            count--;
+        }
+
+        return count > 0 ? new string(buffer, 0, count) : string.Empty;
     }
 
     public void Open(string portName, int baudRate)
