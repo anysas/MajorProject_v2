@@ -28,6 +28,7 @@ public class ArduinoController : MonoBehaviour
 
     readonly HashSet<string> heldKeys = new HashSet<string>();
     readonly HashSet<string> pressedThisFrame = new HashSet<string>();
+    readonly HashSet<string> ignoredBluetoothPorts = new HashSet<string>();
 
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
     static void ResetStatics()
@@ -225,7 +226,7 @@ public class ArduinoController : MonoBehaviour
     bool OpenPort()
     {
         List<string> candidates = new List<string>();
-        if (!string.IsNullOrWhiteSpace(portName))
+        if (!string.IsNullOrWhiteSpace(portName) && !SkipBluetoothPort(portName.Trim()))
         {
             candidates.Add(portName.Trim());
         }
@@ -252,6 +253,11 @@ public class ArduinoController : MonoBehaviour
 
         for (int i = 0; i < candidates.Count; i++)
         {
+            if (SkipBluetoothPort(candidates[i]))
+            {
+                continue;
+            }
+
             if (TryOpen(candidates[i]))
             {
                 return true;
@@ -259,6 +265,21 @@ public class ArduinoController : MonoBehaviour
         }
 
         return false;
+    }
+
+    bool SkipBluetoothPort(string name)
+    {
+        if (!WindowsSerialPort.IsBluetoothPort(name))
+        {
+            return false;
+        }
+
+        if (ignoredBluetoothPorts.Add(name))
+        {
+            Debug.Log("ArduinoController: ignoring " + name + ". It is a Bluetooth serial port, not the Arduino. Keyboard and gamepad stay in control until a USB Arduino port appears.");
+        }
+
+        return true;
     }
 
     bool TryOpen(string name)
