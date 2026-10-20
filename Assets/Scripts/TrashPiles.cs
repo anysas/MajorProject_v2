@@ -40,7 +40,7 @@ public class TrashPiles : MonoBehaviour
     [SerializeField, Range(0.5f, 1f), Tooltip("Keep starting edges this far inside the camera ground footprint.")] float startViewPadding = 0.98f;
     [SerializeField, Tooltip("Play area used for the opening layout. Falls back to a GameObject named GameSection.")] Transform gameSection;
     [SerializeField, Tooltip("Keep starting edges this far inside GameSection.")] float gameSectionInset = 0.35f;
-    [SerializeField, Min(0f), Tooltip("Extra gap between the polygon and GameSection. A pushed edge stops in this gap instead of jamming into the section edge.")] float playAreaMargin = 3f;
+    [SerializeField, Min(0f), Tooltip("Extra gap between the opening polygon and GameSection. Push-back can still travel past GameSection.")] float playAreaMargin = 3f;
     [SerializeField, Range(0.75f, 1f), Tooltip("How fully the opening polygon fills the play area inside GameSection.")] float gameSectionFill = 0.995f;
     [Header("Fail State")]
     [SerializeField, Min(0.5f), Tooltip("Radius of the invisible circle that follows the truck.")] float dangerZoneRadius = 5.5f;
@@ -1507,7 +1507,9 @@ public class TrashPiles : MonoBehaviour
 
     float SwallowDepth()
     {
-        return Mathf.Max(0.12f, cubeExtent * 0.18f);
+        // Rest sits about BlockInset() inside the lip. Swallow once the piece has
+        // been driven roughly two thirds of the way toward the pile, not flush past it.
+        return -BlockInset() * (1f / 3f);
     }
 
     void BeginConsume(int index)
@@ -2004,7 +2006,9 @@ public class TrashPiles : MonoBehaviour
             return lip;
         }
 
-        float t = Mathf.SmoothStep(0f, 1f, Mathf.Clamp01(outward / Mathf.Max(0.2f, valleyWidth)));
+        float t = Mathf.Clamp01(outward / Mathf.Max(0.2f, valleyWidth));
+        // Smootherstep: flat at both ends so the valley meets the lip and the raised sides without a crease.
+        t = t * t * t * (t * (t * 6f - 15f) + 10f);
         return lip + raise * t;
     }
 
@@ -3277,34 +3281,43 @@ public class TrashPiles : MonoBehaviour
         float lip = PileTopY();
         float bottom = 0.02f;
         float width = ValleyBandWidth();
-        const int valleySteps = 4;
+        const int valleySteps = 16;
         const int outerCount = 48;
         int n = count;
+        int rings = valleySteps + 1;
+        int[] ring = new int[n * rings];
+        for (int i = 0; i < n; i++)
+        {
+            Vector3 inner = VertexOffset(i);
+            for (int step = 0; step < rings; step++)
+            {
+                float d = width * step / valleySteps;
+                ring[i * rings + step] = AddTopVert(WithY(OffsetOut(inner, d), PileSurfaceY(d)));
+            }
+        }
 
         for (int i = 0; i < n; i++)
         {
             int next = Wrap(i + 1);
             Vector3 innerA = VertexOffset(i);
             Vector3 innerB = VertexOffset(next);
-            Vector3 prevA = innerA;
-            Vector3 prevB = innerB;
-            for (int step = 1; step <= valleySteps; step++)
+            for (int step = 0; step < valleySteps; step++)
             {
-                float d0 = width * (step - 1) / valleySteps;
-                float d1 = width * step / valleySteps;
-                Vector3 curA = OffsetOut(innerA, d1);
-                Vector3 curB = OffsetOut(innerB, d1);
-                Vector3 a0 = WithY(prevA, PileSurfaceY(d0));
-                Vector3 b0 = WithY(prevB, PileSurfaceY(d0));
-                Vector3 a1 = WithY(curA, PileSurfaceY(d1));
-                Vector3 b1 = WithY(curB, PileSurfaceY(d1));
+                int a0 = ring[i * rings + step];
+                int b0 = ring[next * rings + step];
+                int a1 = ring[i * rings + step + 1];
+                int b1 = ring[next * rings + step + 1];
                 AddTopTri(a0, b1, a1);
                 AddTopTri(a0, b0, b1);
-                prevA = curA;
-                prevB = curB;
             }
 
-            FanPlateau(prevA, prevB, PileSurfaceY(width), outerCount);
+            FanPlateau(
+                ring[i * rings + valleySteps],
+                ring[next * rings + valleySteps],
+                OffsetOut(innerA, width),
+                OffsetOut(innerB, width),
+                PileSurfaceY(width),
+                outerCount);
             AddWall(WithY(innerA, bottom), WithY(innerB, bottom), WithY(innerB, lip), WithY(innerA, lip));
         }
 
@@ -3344,7 +3357,7 @@ public class TrashPiles : MonoBehaviour
         return point;
     }
 
-    void FanPlateau(Vector3 innerA, Vector3 innerB, float height, int outerCount)
+    void FanPlateau(int innerAIndex, int innerBIndex, Vector3 innerA, Vector3 innerB, float height, int outerCount)
     {
         Vector3 dirA = FlatDir(innerA);
         Vector3 dirB = FlatDir(innerB);
@@ -3379,32 +3392,32 @@ public class TrashPiles : MonoBehaviour
             sectorOuter.Insert(insertAt, point);
         }
 
-        Vector3 innerATop = WithY(innerA, height);
-        Vector3 prevOuterTop = WithY(outerA, height);
+        int prevOuter = AddTopVert(WithY(outerA, height));
         for (int s = 0; s < sectorOuter.Count; s++)
         {
-            Vector3 outerTop = WithY(sectorOuter[s], height);
-            AddTopTri(innerATop, outerTop, prevOuterTop);
-            prevOuterTop = outerTop;
+            int outer = AddTopVert(WithY(sectorOuter[s], height));
+            AddTopTri(innerAIndex, outer, prevOuter);
+            prevOuter = outer;
         }
 
-        Vector3 outerBTop = WithY(outerB, height);
-        AddTopTri(innerATop, outerBTop, prevOuterTop);
-        AddTopTri(innerATop, WithY(innerB, height), outerBTop);
+        int outerBIndex = AddTopVert(WithY(outerB, height));
+        AddTopTri(innerAIndex, outerBIndex, prevOuter);
+        AddTopTri(innerAIndex, innerBIndex, outerBIndex);
     }
 
-    void AddTopTri(Vector3 a, Vector3 b, Vector3 c)
+    int AddTopVert(Vector3 point)
     {
-        int start = verts.Count;
-        verts.Add(a);
-        verts.Add(b);
-        verts.Add(c);
-        uvs.Add(WorldUv(a));
-        uvs.Add(WorldUv(b));
-        uvs.Add(WorldUv(c));
-        tris.Add(start);
-        tris.Add(start + 1);
-        tris.Add(start + 2);
+        int index = verts.Count;
+        verts.Add(point);
+        uvs.Add(WorldUv(point));
+        return index;
+    }
+
+    void AddTopTri(int a, int b, int c)
+    {
+        tris.Add(a);
+        tris.Add(b);
+        tris.Add(c);
     }
 
     static Vector3 FlatDir(Vector3 offset)
@@ -3917,12 +3930,8 @@ public class TrashPiles : MonoBehaviour
             cap = Mathf.Max(minRadius + 0.1f, decorative);
         }
 
-        float section = GameSectionRadius(dir);
-        if (section < cap)
-        {
-            cap = Mathf.Max(minRadius + 0.1f, section);
-        }
-
+        // GameSection only shapes the opening layout. A shove or recede can travel past it
+        // so the trash edge does not stop as if it hit an invisible wall.
         return cap;
     }
 

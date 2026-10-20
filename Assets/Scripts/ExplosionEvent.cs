@@ -50,6 +50,8 @@ public class ExplosionEvent : MonoBehaviour
     [SerializeField] Color warningColor = new Color(1f, 0.15f, 0.08f, 0.55f);
     [SerializeField] int debrisCount = 28;
     [SerializeField] float debrisLifetime = 1.6f;
+    [SerializeField] Texture2D boomSprite;
+    [SerializeField, Min(1)] int boomCount = 4;
     [SerializeField, Tooltip("If the pile's average radius is at least this, a second explosion can run at the same time.")] float spaciousRadiusForMulti = 15f;
     [SerializeField, Tooltip("Minimum distance between simultaneous explosion markers.")] float multiBlastSeparation = 8f;
 
@@ -57,6 +59,7 @@ public class ExplosionEvent : MonoBehaviour
 
     BlastSlot[] slots;
     Material debrisMaterial;
+    Material boomMaterial;
     float floorY;
     EventsHandler eventsHandler;
 
@@ -119,6 +122,7 @@ public class ExplosionEvent : MonoBehaviour
         edgeInset = Mathf.Max(0f, edgeInset);
         debrisCount = Mathf.Max(4, debrisCount);
         debrisLifetime = Mathf.Max(0.2f, debrisLifetime);
+        boomCount = Mathf.Max(1, boomCount);
         spaciousRadiusForMulti = Mathf.Max(6f, spaciousRadiusForMulti);
         multiBlastSeparation = Mathf.Max(blastRadius, multiBlastSeparation);
     }
@@ -149,6 +153,11 @@ public class ExplosionEvent : MonoBehaviour
         if (debrisMaterial != null)
         {
             Destroy(debrisMaterial);
+        }
+
+        if (boomMaterial != null)
+        {
+            Destroy(boomMaterial);
         }
     }
 
@@ -456,7 +465,7 @@ public class ExplosionEvent : MonoBehaviour
     void Detonate(BlastSlot slot)
     {
         ClearWarning(slot);
-        SpawnDebris(slot.blastPos);
+        SpawnDebris(slot.blastPos, slot.activeBlastRadius);
         SoundManager.PlayExplosion();
 
         if (truck != null && TruckInBlast(slot.blastPos, slot.activeBlastRadius))
@@ -598,7 +607,7 @@ public class ExplosionEvent : MonoBehaviour
         return mesh;
     }
 
-    void SpawnDebris(Vector3 origin)
+    void SpawnDebris(Vector3 origin, float blastRadius)
     {
         if (debrisMaterial == null)
         {
@@ -641,6 +650,167 @@ public class ExplosionEvent : MonoBehaviour
             body.AddTorque(Random.insideUnitSphere * 8f, ForceMode.Impulse);
 
             Destroy(chunk, debrisLifetime);
+        }
+
+        SpawnBoomBurst(origin, blastRadius);
+    }
+
+    void SpawnBoomBurst(Vector3 origin, float blastRadius)
+    {
+        if (boomSprite == null)
+        {
+            return;
+        }
+
+        EnsureBoomMaterial();
+        if (boomMaterial == null)
+        {
+            return;
+        }
+
+        GameObject burst = new GameObject("ExplosionBoom");
+        burst.transform.position = origin + Vector3.up * 1.55f;
+        ParticleSystem particles = burst.AddComponent<ParticleSystem>();
+        particles.Stop(true, ParticleSystemStopBehavior.StopEmittingAndClear);
+        ConfigureBoomParticles(particles, burst.GetComponent<ParticleSystemRenderer>(), blastRadius);
+        particles.Emit(Mathf.Max(1, boomCount));
+        Destroy(burst, debrisLifetime + 0.4f);
+    }
+
+    void ConfigureBoomParticles(ParticleSystem particles, ParticleSystemRenderer renderer, float blastRadius)
+    {
+        ParticleSystem.MainModule main = particles.main;
+        main.playOnAwake = false;
+        main.loop = false;
+        main.duration = 0.2f;
+        main.startLifetime = new ParticleSystem.MinMaxCurve(0.45f, 0.85f);
+        main.startSpeed = new ParticleSystem.MinMaxCurve(0.6f, 1.5f);
+        main.startSize = new ParticleSystem.MinMaxCurve(1.8f, 3.4f);
+        main.startColor = Color.white;
+        main.startRotation = new ParticleSystem.MinMaxCurve(0f, Mathf.PI * 2f);
+        main.simulationSpace = ParticleSystemSimulationSpace.World;
+        main.gravityModifier = 0.15f;
+        main.maxParticles = Mathf.Max(8, boomCount + 4);
+        main.stopAction = ParticleSystemStopAction.Destroy;
+
+        ParticleSystem.EmissionModule emission = particles.emission;
+        emission.enabled = false;
+        emission.rateOverTime = 0f;
+
+        ParticleSystem.ShapeModule shape = particles.shape;
+        shape.enabled = true;
+        shape.shapeType = ParticleSystemShapeType.Circle;
+        shape.radius = Mathf.Max(1f, blastRadius) * 1.12f;
+        shape.radiusThickness = 1f;
+        shape.rotation = new Vector3(-90f, 0f, 0f);
+
+        ParticleSystem.ColorOverLifetimeModule colorOverLifetime = particles.colorOverLifetime;
+        colorOverLifetime.enabled = true;
+        Gradient fade = new Gradient();
+        fade.SetKeys(
+            new[]
+            {
+                new GradientColorKey(Color.white, 0f),
+                new GradientColorKey(new Color(1f, 0.72f, 0.18f), 1f)
+            },
+            new[]
+            {
+                new GradientAlphaKey(1f, 0f),
+                new GradientAlphaKey(0.85f, 0.35f),
+                new GradientAlphaKey(0f, 1f)
+            });
+        colorOverLifetime.color = fade;
+
+        ParticleSystem.SizeOverLifetimeModule sizeOverLifetime = particles.sizeOverLifetime;
+        sizeOverLifetime.enabled = true;
+        AnimationCurve pop = new AnimationCurve(
+            new Keyframe(0f, 0.35f),
+            new Keyframe(0.18f, 1.15f),
+            new Keyframe(1f, 1.55f));
+        sizeOverLifetime.size = new ParticleSystem.MinMaxCurve(1f, pop);
+
+        ParticleSystem.RotationOverLifetimeModule spin = particles.rotationOverLifetime;
+        spin.enabled = true;
+        spin.z = new ParticleSystem.MinMaxCurve(-40f, 40f);
+
+        renderer.renderMode = ParticleSystemRenderMode.Billboard;
+        renderer.sharedMaterial = boomMaterial;
+        renderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+        renderer.receiveShadows = false;
+        renderer.minParticleSize = 0.04f;
+        renderer.maxParticleSize = 2.2f;
+        renderer.sortingOrder = 2;
+    }
+
+    void EnsureBoomMaterial()
+    {
+        if (boomMaterial != null)
+        {
+            return;
+        }
+
+        Shader shader = Shader.Find("Universal Render Pipeline/Particles/Unlit");
+        if (shader == null)
+        {
+            shader = Shader.Find("Universal Render Pipeline/Unlit");
+        }
+
+        if (shader == null)
+        {
+            shader = Shader.Find("Sprites/Default");
+        }
+
+        if (shader == null)
+        {
+            shader = Shader.Find("Particles/Standard Unlit");
+        }
+
+        if (shader == null)
+        {
+            return;
+        }
+
+        boomMaterial = new Material(shader);
+        boomMaterial.color = Color.white;
+        if (boomMaterial.HasProperty("_BaseColor"))
+        {
+            boomMaterial.SetColor("_BaseColor", Color.white);
+        }
+
+        if (boomMaterial.HasProperty("_Color"))
+        {
+            boomMaterial.SetColor("_Color", Color.white);
+        }
+
+        if (boomMaterial.HasProperty("_BaseMap"))
+        {
+            boomMaterial.SetTexture("_BaseMap", boomSprite);
+        }
+
+        if (boomMaterial.HasProperty("_MainTex"))
+        {
+            boomMaterial.SetTexture("_MainTex", boomSprite);
+        }
+
+        boomMaterial.mainTexture = boomSprite;
+        boomMaterial.renderQueue = 3000;
+        if (boomMaterial.HasProperty("_Surface"))
+        {
+            boomMaterial.SetFloat("_Surface", 1f);
+            boomMaterial.SetFloat("_Blend", 0f);
+            boomMaterial.SetFloat("_SrcBlend", (float)UnityEngine.Rendering.BlendMode.SrcAlpha);
+            boomMaterial.SetFloat("_DstBlend", (float)UnityEngine.Rendering.BlendMode.OneMinusSrcAlpha);
+            boomMaterial.SetFloat("_SrcBlendAlpha", (float)UnityEngine.Rendering.BlendMode.One);
+            boomMaterial.SetFloat("_DstBlendAlpha", (float)UnityEngine.Rendering.BlendMode.OneMinusSrcAlpha);
+            boomMaterial.SetFloat("_ZWrite", 0f);
+            boomMaterial.EnableKeyword("_SURFACE_TYPE_TRANSPARENT");
+            boomMaterial.DisableKeyword("_SURFACE_TYPE_OPAQUE");
+            boomMaterial.SetOverrideTag("RenderType", "Transparent");
+        }
+
+        if (boomMaterial.HasProperty("_Cull"))
+        {
+            boomMaterial.SetFloat("_Cull", 0f);
         }
     }
 
