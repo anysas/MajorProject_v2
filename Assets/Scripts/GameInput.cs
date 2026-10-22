@@ -92,6 +92,33 @@ public static class GameInput
         ArduinoController.ConfirmPressedThisFrame ||
         GamepadPressedThisFrame();
 
+    public static bool ConfirmHeld
+    {
+        get
+        {
+            if (ArduinoController.ConfirmHeld || ActionHeld(Actions.Truck.Confirm))
+            {
+                return true;
+            }
+
+            Keyboard keyboard = Keyboard.current;
+            if (keyboard != null && (keyboard.enterKey.isPressed || keyboard.numpadEnterKey.isPressed))
+            {
+                return true;
+            }
+
+            foreach (Gamepad gamepad in Gamepad.all)
+            {
+                if (gamepad != null && gamepad.buttonSouth.isPressed)
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+    }
+
     static void Hook()
     {
         InputAction headlight = instance.Truck.Headlight;

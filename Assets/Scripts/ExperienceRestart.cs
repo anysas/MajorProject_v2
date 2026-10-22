@@ -37,15 +37,20 @@ public class ExperienceRestart : MonoBehaviour
     static void BindIfPresent()
     {
         GameObject screen = FindRestartScreen();
-        if (screen == null)
-        {
-            return;
-        }
-
-        if (screen.GetComponent<ExperienceRestart>() == null)
+        if (screen != null && screen.GetComponent<ExperienceRestart>() == null)
         {
             screen.AddComponent<ExperienceRestart>();
         }
+
+        HoldToStartScreen.Ensure();
+    }
+
+    public static void ReturnToStartImmediately()
+    {
+        HasStarted = false;
+        IsEnded = false;
+        StartedFrame = -1;
+        SceneManager.LoadScene(SceneManager.GetActiveScene().name);
     }
 
     public static void HoldUntilStart()
@@ -447,5 +452,79 @@ public class ExperienceRestart : MonoBehaviour
         GameObject eventSystem = new GameObject("EventSystem");
         eventSystem.AddComponent<EventSystem>();
         eventSystem.AddComponent<InputSystemUIInputModule>();
+    }
+
+    class HoldToStartScreen : MonoBehaviour
+    {
+        const float HoldSeconds = 3f;
+
+        static HoldToStartScreen instance;
+        float held;
+        bool armed;
+
+        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
+        static void ResetStatics()
+        {
+            instance = null;
+        }
+
+        public static void Ensure()
+        {
+            if (instance != null)
+            {
+                return;
+            }
+
+            GameObject holder = new GameObject("HoldToStartScreen");
+            instance = holder.AddComponent<HoldToStartScreen>();
+        }
+
+        void Awake()
+        {
+            if (instance != null && instance != this)
+            {
+                Destroy(gameObject);
+                return;
+            }
+
+            instance = this;
+            DontDestroyOnLoad(gameObject);
+        }
+
+        void OnDestroy()
+        {
+            if (instance == this)
+            {
+                instance = null;
+            }
+        }
+
+        void Update()
+        {
+            if (!HasStarted)
+            {
+                held = 0f;
+                armed = false;
+                return;
+            }
+
+            if (!GameInput.ConfirmHeld)
+            {
+                held = 0f;
+                armed = true;
+                return;
+            }
+
+            if (!armed)
+            {
+                return;
+            }
+
+            held += Time.unscaledDeltaTime;
+            if (held >= HoldSeconds)
+            {
+                ReturnToStartImmediately();
+            }
+        }
     }
 }

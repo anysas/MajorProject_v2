@@ -108,6 +108,9 @@ public class ArduinoController : MonoBehaviour
     public static bool ConfirmPressedThisFrame =>
         PressedThisFrame("ENTER") || PressedThisFrame("RETURN") || PressedThisFrame("NUMPADENTER");
 
+    public static bool ConfirmHeld =>
+        Held("ENTER") || Held("RETURN") || Held("NUMPADENTER");
+
     public static bool Held(string keyName)
     {
         return Instance != null && Instance.IsHeld(keyName);
