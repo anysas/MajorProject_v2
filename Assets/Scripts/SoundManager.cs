@@ -1,3 +1,4 @@
+using System.Collections;
 using UnityEngine;
 
 public class SoundManager : MonoBehaviour
@@ -7,6 +8,7 @@ public class SoundManager : MonoBehaviour
     [Header("Music")]
     [SerializeField, Tooltip("Loops in the background.")] AudioClip music;
     [SerializeField, Range(0f, 1f)] float musicVolume = 0.4f;
+    [SerializeField, Min(0.05f), Tooltip("Fade length when a new game starts inside a session.")] float musicFadeOutSeconds = 1.15f;
 
     [Header("Clips")]
     [SerializeField, Tooltip("Plays when a flock of birds flies in.")] AudioClip birdsFlyIn;
@@ -100,6 +102,16 @@ public class SoundManager : MonoBehaviour
         }
     }
 
+    public static IEnumerator FadeOutMusic()
+    {
+        if (Instance == null)
+        {
+            yield break;
+        }
+
+        yield return Instance.FadeMusicOut();
+    }
+
     void StartMusic()
     {
         if (musicSource == null || music == null)
@@ -109,10 +121,32 @@ public class SoundManager : MonoBehaviour
 
         musicSource.clip = music;
         musicSource.volume = musicVolume;
+        musicSource.time = 0f;
         if (!musicSource.isPlaying)
         {
             musicSource.Play();
         }
+    }
+
+    IEnumerator FadeMusicOut()
+    {
+        if (musicSource == null || !musicSource.isPlaying)
+        {
+            yield break;
+        }
+
+        float duration = Mathf.Max(0.05f, musicFadeOutSeconds);
+        float startVolume = musicSource.volume;
+        float elapsed = 0f;
+        while (elapsed < duration)
+        {
+            elapsed += Time.deltaTime;
+            musicSource.volume = Mathf.Lerp(startVolume, 0f, Mathf.Clamp01(elapsed / duration));
+            yield return null;
+        }
+
+        musicSource.volume = 0f;
+        musicSource.Stop();
     }
 
     void PlayOneShot(AudioClip clip, float volume)

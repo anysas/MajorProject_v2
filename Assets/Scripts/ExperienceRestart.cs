@@ -1,3 +1,4 @@
+using System.Collections;
 using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.InputSystem.UI;
@@ -22,6 +23,7 @@ public class ExperienceRestart : MonoBehaviour
     CanvasGroup canvasGroup;
     Volume blurVolume;
     GameObject fallbackRoot;
+    bool restarting;
 
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
     static void ResetStatics()
@@ -128,8 +130,25 @@ public class ExperienceRestart : MonoBehaviour
 
     void Restart()
     {
+        if (restarting)
+        {
+            return;
+        }
+
+        restarting = true;
         HasStarted = false;
         IsEnded = false;
+        if (restartButton != null)
+        {
+            restartButton.interactable = false;
+        }
+
+        StartCoroutine(FadeMusicThenReload());
+    }
+
+    IEnumerator FadeMusicThenReload()
+    {
+        yield return SoundManager.FadeOutMusic();
         SceneManager.LoadScene(SceneManager.GetActiveScene().name);
     }
 
