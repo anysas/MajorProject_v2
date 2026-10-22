@@ -209,6 +209,11 @@ public class CarController : MonoBehaviour
         ApplyScoopColor(HealthHearts.Lives);
     }
 
+    void Start()
+    {
+        ApplyScoopColor(HealthHearts.Lives);
+    }
+
     static void SetLayerRecursive(Transform root, int layer)
     {
         if (root == null || layer < 0)

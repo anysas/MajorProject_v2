@@ -41,14 +41,22 @@ public class HealthHearts : MonoBehaviour
 
     static void OnSceneLoaded(Scene scene, LoadSceneMode mode)
     {
-        Lives = MaxLives;
+        ResetForNewRun();
         if (instance != null)
         {
-            instance.ResetHearts();
             return;
         }
 
         EnsureExists();
+    }
+
+    public static void ResetForNewRun()
+    {
+        Lives = MaxLives;
+        if (instance != null)
+        {
+            instance.ResetHearts();
+        }
     }
 
     public static HealthHearts EnsureExists()
@@ -83,6 +91,7 @@ public class HealthHearts : MonoBehaviour
     void Awake()
     {
         instance = this;
+        Lives = MaxLives;
         if (hearts == null && !BindSceneHearts())
         {
             BuildHud();

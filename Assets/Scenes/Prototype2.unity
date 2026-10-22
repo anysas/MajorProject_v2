@@ -2603,7 +2603,7 @@ MonoBehaviour:
   hornClip: {fileID: 8300000, guid: 396cdda43bebc384a97adce557abe547, type: 3}
   hornVolume: 0.54
   birdScale: 0.4
-  flapClip: {fileID: 0}
+  flapClip: {fileID: 8059203880965683319, guid: 2d3b774fd20e3b44a92a074d9cd6163b, type: 3}
   flapSpeed: 1.6
   spawnIntervalMin: 6.59
   spawnIntervalMax: 14.2
@@ -2869,6 +2869,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   music: {fileID: 8300000, guid: dbca4ebb31d4f5a47ac00a26524a8e2e, type: 3}
   musicVolume: 0.479
+  musicFadeOutSeconds: 1.15
   birdsFlyIn: {fileID: 8300000, guid: bfe2b8b2fe6efe249b469f8fde8e5a01, type: 3}
   armUp: {fileID: 8300000, guid: 2df16ed5af48aa74e9ed0f4e1cb5da96, type: 3}
   explosionWarning: {fileID: 8300000, guid: 69b79b74648086e449f468e4505791ab, type: 3}
@@ -5360,6 +5361,7 @@ MonoBehaviour:
   pileHeight: 0.05
   sideRaise: 3.27
   valleyWidth: 16.14
+  edgeSpillWidth: 3.1
   barrierHeight: 8
   blockGap: 2.66
   blockSeparation: 0.85
@@ -5412,6 +5414,12 @@ MonoBehaviour:
   fallDuration: 0.45
   decorativePiles: {fileID: 1860440729}
   decorativePileInset: 0.75
+  showEdgeDirt: 0
+  edgeDirtPerMeter: 26.2
+  edgeDirtWidth: 3.1
+  edgeDirtSize: 1.33
+  edgeDirtColor: {r: 0.4056604, g: 0.34467262, b: 0.30041832, a: 0.98}
+  edgeDirtFarColor: {r: 0.38679248, g: 0.38679248, b: 0.38679248, a: 0.45}
 --- !u!65 &1847372042
 BoxCollider:
   m_ObjectHideFlags: 0

@@ -50,6 +50,7 @@ public class ExperienceRestart : MonoBehaviour
         HasStarted = false;
         IsEnded = false;
         StartedFrame = -1;
+        HealthHearts.ResetForNewRun();
         SceneManager.LoadScene(SceneManager.GetActiveScene().name);
     }
 
@@ -143,6 +144,7 @@ public class ExperienceRestart : MonoBehaviour
         restarting = true;
         HasStarted = false;
         IsEnded = false;
+        HealthHearts.ResetForNewRun();
         if (restartButton != null)
         {
             restartButton.interactable = false;

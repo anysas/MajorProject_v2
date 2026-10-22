@@ -20,6 +20,7 @@ public class TrashPiles : MonoBehaviour
     [SerializeField] float pileHeight = 0.8f;
     [SerializeField, Min(0f), Tooltip("How much higher the pile sits beyond the inner edge. The inner polygon edge stays at Pile Height.")] float sideRaise = 0.75f;
     [SerializeField, Min(0.2f), Tooltip("How far out from the inner edge the surface climbs from the valley to the raised sides.")] float valleyWidth = 3.5f;
+    [SerializeField, Min(0.4f), Tooltip("How far the inner pile ramps onto the floor, so the edge looks like trash crawling inward.")] float edgeSpillWidth = 3.1f;
     [SerializeField] float barrierHeight = 8f;
     [SerializeField, Tooltip("Empty space between each block and the polygon inner edge.")] float blockGap = 0.45f;
     [SerializeField, Tooltip("Minimum extra space kept between neighboring blocks.")] float blockSeparation = 0.85f;
@@ -73,6 +74,13 @@ public class TrashPiles : MonoBehaviour
     [SerializeField] float fallDuration = 0.45f;
     [SerializeField, Tooltip("Inner polygon cannot recede past these decorative piles.")] Transform decorativePiles;
     [SerializeField, Tooltip("Keep the inner wall this far inside the decorative piles.")] float decorativePileInset = 0.75f;
+    [Header("Edge Dirt")]
+    [SerializeField, Tooltip("Dirt clods tumbling along the inner lip of the pile.")] bool showEdgeDirt = false;
+    [SerializeField, Min(0f), Tooltip("Dirt particles spawned per metre of pile edge. Density is highest at the wall.")] float edgeDirtPerMeter = 24f;
+    [SerializeField, Min(0.4f), Tooltip("How far the dirt skirt reaches into the play area.")] float edgeDirtWidth = 3.1f;
+    [SerializeField, Min(0.05f), Tooltip("Size of the dirt clods lining the pile.")] float edgeDirtSize = 0.48f;
+    [SerializeField, Tooltip("Colour of dirt against the polygon wall.")] Color edgeDirtColor = new Color(0.34f, 0.22f, 0.12f, 0.98f);
+    [SerializeField, Tooltip("Colour of the thinner dirt farther from the wall.")] Color edgeDirtFarColor = new Color(0.66f, 0.5f, 0.28f, 0.45f);
 
     enum BlockLife
     {
@@ -134,6 +142,9 @@ public class TrashPiles : MonoBehaviour
     Vector3[] blockBaseScale;
     bool[] consumeFadeReady;
     Transform[] edgeWalls;
+    ParticleSystem[] edgeDirt;
+    Material edgeDirtMaterial;
+    Texture2D edgeDirtTexture;
     readonly List<Vector3> verts = new List<Vector3>(2048);
     readonly List<Vector2> uvs = new List<Vector2>(2048);
     readonly List<int> tris = new List<int>(4096);
@@ -152,12 +163,35 @@ public class TrashPiles : MonoBehaviour
         BuildWorld();
     }
 
+    void OnDestroy()
+    {
+        if (worldRoot != null)
+        {
+            Destroy(worldRoot.gameObject);
+            worldRoot = null;
+        }
+
+        edgeDirt = null;
+        if (edgeDirtMaterial != null)
+        {
+            Destroy(edgeDirtMaterial);
+            edgeDirtMaterial = null;
+        }
+
+        if (edgeDirtTexture != null)
+        {
+            Destroy(edgeDirtTexture);
+            edgeDirtTexture = null;
+        }
+    }
+
     void OnValidate()
     {
         count = Mathf.Max(3, count);
         pileHeight = Mathf.Max(0.05f, pileHeight);
         sideRaise = Mathf.Max(0f, sideRaise);
         valleyWidth = Mathf.Max(0.2f, valleyWidth);
+        edgeSpillWidth = Mathf.Max(0.4f, edgeSpillWidth);
         barrierHeight = Mathf.Max(pileHeight, barrierHeight);
         blockGap = Mathf.Max(0.05f, blockGap);
         blockSeparation = Mathf.Max(0.1f, blockSeparation);
@@ -205,6 +239,9 @@ public class TrashPiles : MonoBehaviour
         respawnHeadStart = Mathf.Clamp(respawnHeadStart, 0f, 0.9f);
         fallDuration = Mathf.Max(0.05f, fallDuration);
         decorativePileInset = Mathf.Max(0f, decorativePileInset);
+        edgeDirtPerMeter = Mathf.Max(0f, edgeDirtPerMeter);
+        edgeDirtWidth = Mathf.Max(0.4f, edgeDirtWidth);
+        edgeDirtSize = Mathf.Max(0.05f, edgeDirtSize);
         RefreshRandomTrashFromFolder();
     }
 
@@ -217,6 +254,7 @@ public class TrashPiles : MonoBehaviour
 
         if (worldRoot == null || corners == null || !ExperienceRestart.IsActive)
         {
+            PauseEdgeDirt();
             return;
         }
 
@@ -231,6 +269,8 @@ public class TrashPiles : MonoBehaviour
             ApplyShape();
         }
 
+        PlaceEdgeDirt();
+        StepEdgeDirt(Time.fixedDeltaTime);
         CarryShovedTrashWithPile();
         ApplyBlockVisuals();
         ContainTruckInPlayArea();
@@ -2209,6 +2249,7 @@ public class TrashPiles : MonoBehaviour
         {
             Destroy(worldRoot.gameObject);
             worldRoot = null;
+            edgeDirt = null;
         }
 
         RefreshRandomTrashFromFolder();
@@ -2320,6 +2361,10 @@ public class TrashPiles : MonoBehaviour
 
         SpawnCorners();
         SpawnEdgeWalls();
+        if (showEdgeDirt)
+        {
+            SpawnEdgeDirt();
+        }
         IgnoreBlockAndWallCollisions();
 
         dirty = true;
@@ -3097,6 +3142,410 @@ public class TrashPiles : MonoBehaviour
         }
     }
 
+    void SpawnEdgeDirt()
+    {
+        EnsureEdgeDirtMaterial();
+        edgeDirt = new ParticleSystem[count];
+        for (int i = 0; i < count; i++)
+        {
+            GameObject dirtObject = new GameObject("TrashPileDirt " + i);
+            dirtObject.transform.SetParent(worldRoot, false);
+            dirtObject.SetActive(false);
+
+            ParticleSystem particles = dirtObject.AddComponent<ParticleSystem>();
+            particles.Stop(true, ParticleSystemStopBehavior.StopEmittingAndClear);
+            ConfigureEdgeDirt(particles, dirtObject.GetComponent<ParticleSystemRenderer>());
+            edgeDirt[i] = particles;
+        }
+    }
+
+    void PlaceEdgeDirt()
+    {
+        if (edgeDirt == null || corners == null)
+        {
+            return;
+        }
+
+        float size = Mathf.Max(0.05f, edgeDirtSize);
+        for (int i = 0; i < count; i++)
+        {
+            ParticleSystem particles = i < edgeDirt.Length ? edgeDirt[i] : null;
+            if (particles == null)
+            {
+                continue;
+            }
+
+            Vector3 a = corners[i];
+            Vector3 b = corners[Wrap(i + 1)];
+            Vector3 delta = b - a;
+            delta.y = 0f;
+            float length = delta.magnitude;
+            if (!showEdgeDirt || length < 0.05f || edgeDirtPerMeter <= 0.001f)
+            {
+                if (particles.gameObject.activeSelf)
+                {
+                    particles.Stop(true, ParticleSystemStopBehavior.StopEmitting);
+                    particles.gameObject.SetActive(false);
+                }
+
+                continue;
+            }
+
+            Vector3 outward = EdgeOutward(i);
+            Vector3 mid = (a + b) * 0.5f;
+            mid.y = 0.08f;
+            Quaternion rotation = Quaternion.LookRotation(outward, Vector3.up);
+            Transform dirtTransform = particles.transform;
+            if (!dirtTransform.gameObject.activeSelf)
+            {
+                dirtTransform.SetPositionAndRotation(mid, rotation);
+                dirtTransform.gameObject.SetActive(true);
+            }
+            else
+            {
+                dirtTransform.SetPositionAndRotation(mid, rotation);
+            }
+
+            ParticleSystem.MainModule main = particles.main;
+            main.startSize = new ParticleSystem.MinMaxCurve(size * 0.4f, size * 1.35f);
+
+            if (!ExperienceRestart.IsActive && particles.isPlaying)
+            {
+                particles.Stop(true, ParticleSystemStopBehavior.StopEmitting);
+            }
+        }
+    }
+
+    void StepEdgeDirt(float dt)
+    {
+        if (!showEdgeDirt || edgeDirt == null || corners == null || dt <= 0f)
+        {
+            return;
+        }
+
+        float lip = PileTopY();
+        float avgLife = 1.25f;
+        for (int i = 0; i < count; i++)
+        {
+            ParticleSystem particles = i < edgeDirt.Length ? edgeDirt[i] : null;
+            if (particles == null || !particles.gameObject.activeSelf)
+            {
+                continue;
+            }
+
+            Vector3 a = corners[i];
+            Vector3 b = corners[Wrap(i + 1)];
+            Vector3 delta = b - a;
+            delta.y = 0f;
+            float length = delta.magnitude;
+            if (length < 0.05f)
+            {
+                continue;
+            }
+
+            Vector3 outward = EdgeOutward(i);
+            Vector3 tangent = delta / length;
+            Vector3 mid = (a + b) * 0.5f;
+            mid.y = 0f;
+
+            if (!particles.isPlaying)
+            {
+                particles.Play(true);
+                int fill = Mathf.Min(particles.main.maxParticles, Mathf.RoundToInt(length * edgeDirtPerMeter * avgLife));
+                EmitEdgeDirtBand(particles, mid, outward, tangent, length, lip, fill);
+            }
+
+            float expected = length * edgeDirtPerMeter * dt;
+            int spawn = Mathf.FloorToInt(expected);
+            if (Random.value < expected - spawn)
+            {
+                spawn++;
+            }
+
+            if (spawn > 0)
+            {
+                EmitEdgeDirtBand(particles, mid, outward, tangent, length, lip, spawn);
+            }
+        }
+    }
+
+    void EmitEdgeDirtBand(ParticleSystem particles, Vector3 mid, Vector3 outward, Vector3 tangent, float length, float lip, int amount)
+    {
+        if (particles == null || amount <= 0)
+        {
+            return;
+        }
+
+        float width = Mathf.Max(0.4f, edgeDirtWidth);
+        float size = Mathf.Max(0.05f, edgeDirtSize);
+        float height = Mathf.Max(0.12f, lip * 0.4f);
+        ParticleSystem.EmitParams emit = new ParticleSystem.EmitParams();
+        emit.applyShapeToPosition = false;
+        for (int n = 0; n < amount; n++)
+        {
+            float along = (Random.value - 0.5f) * length;
+            float dist = width * Mathf.Pow(Random.value, 2.35f);
+            float t = Mathf.Clamp01(dist / width);
+            Vector3 pos = mid + tangent * along - outward * dist;
+            pos.y = Random.Range(0.05f, height);
+
+            Color near = edgeDirtColor;
+            Color far = edgeDirtFarColor;
+            Color color = Color.Lerp(near, far, t);
+            color.a *= Mathf.Lerp(1f, 0.28f, t);
+
+            emit.position = pos;
+            emit.velocity = tangent * Random.Range(-0.06f, 0.06f) - outward * Random.Range(0f, 0.035f);
+            emit.startSize = size * Mathf.Lerp(1.25f, 0.38f, t) * Random.Range(0.85f, 1.15f);
+            emit.startLifetime = Mathf.Lerp(1.45f, 0.7f, t);
+            emit.startColor = color;
+            emit.rotation = Random.Range(0f, 360f);
+            particles.Emit(emit, 1);
+        }
+    }
+
+    void PauseEdgeDirt()
+    {
+        if (edgeDirt == null)
+        {
+            return;
+        }
+
+        for (int i = 0; i < edgeDirt.Length; i++)
+        {
+            ParticleSystem particles = edgeDirt[i];
+            if (particles == null || !particles.isPlaying)
+            {
+                continue;
+            }
+
+            particles.Stop(true, ParticleSystemStopBehavior.StopEmitting);
+        }
+    }
+
+    void ConfigureEdgeDirt(ParticleSystem particles, ParticleSystemRenderer renderer)
+    {
+        ParticleSystem.MainModule main = particles.main;
+        main.playOnAwake = false;
+        main.loop = true;
+        main.duration = 1f;
+        main.prewarm = false;
+        main.startLifetime = new ParticleSystem.MinMaxCurve(0.9f, 1.6f);
+        main.startSpeed = new ParticleSystem.MinMaxCurve(0.03f, 0.18f);
+        main.startSize = new ParticleSystem.MinMaxCurve(0.28f, 0.7f);
+        main.startColor = new ParticleSystem.MinMaxGradient(edgeDirtColor, edgeDirtFarColor);
+        main.startRotation = new ParticleSystem.MinMaxCurve(0f, Mathf.PI * 2f);
+        main.simulationSpace = ParticleSystemSimulationSpace.World;
+        main.scalingMode = ParticleSystemScalingMode.Local;
+        main.gravityModifier = 0.22f;
+        main.maxParticles = 560;
+        main.emitterVelocityMode = ParticleSystemEmitterVelocityMode.Transform;
+        main.cullingMode = ParticleSystemCullingMode.AlwaysSimulate;
+
+        ParticleSystem.EmissionModule emission = particles.emission;
+        emission.enabled = false;
+        emission.rateOverTime = 0f;
+        emission.rateOverDistance = 0f;
+        emission.burstCount = 0;
+
+        ParticleSystem.ShapeModule shape = particles.shape;
+        shape.enabled = false;
+
+        ParticleSystem.ColorOverLifetimeModule colorOverLifetime = particles.colorOverLifetime;
+        colorOverLifetime.enabled = true;
+        Gradient fade = new Gradient();
+        fade.SetKeys(
+            new[]
+            {
+                new GradientColorKey(Color.white, 0f),
+                new GradientColorKey(Color.white, 1f)
+            },
+            new[]
+            {
+                new GradientAlphaKey(0.2f, 0f),
+                new GradientAlphaKey(1f, 0.1f),
+                new GradientAlphaKey(0.7f, 0.55f),
+                new GradientAlphaKey(0f, 1f)
+            });
+        colorOverLifetime.color = fade;
+
+        ParticleSystem.SizeOverLifetimeModule sizeOverLifetime = particles.sizeOverLifetime;
+        sizeOverLifetime.enabled = true;
+        AnimationCurve puff = new AnimationCurve(
+            new Keyframe(0f, 0.7f),
+            new Keyframe(0.2f, 1.05f),
+            new Keyframe(1f, 0.55f));
+        sizeOverLifetime.size = new ParticleSystem.MinMaxCurve(1f, puff);
+
+        ParticleSystem.RotationOverLifetimeModule spin = particles.rotationOverLifetime;
+        spin.enabled = true;
+        spin.separateAxes = true;
+        spin.x = new ParticleSystem.MinMaxCurve(-16f, 16f);
+        spin.y = new ParticleSystem.MinMaxCurve(-8f, 8f);
+        spin.z = new ParticleSystem.MinMaxCurve(-18f, 18f);
+
+        ParticleSystem.VelocityOverLifetimeModule roll = particles.velocityOverLifetime;
+        roll.enabled = true;
+        roll.space = ParticleSystemSimulationSpace.Local;
+        roll.x = new ParticleSystem.MinMaxCurve(-0.22f, 0.22f);
+        roll.y = new ParticleSystem.MinMaxCurve(-0.06f, 0.03f);
+        roll.z = new ParticleSystem.MinMaxCurve(-0.12f, 0.02f);
+
+        ParticleSystem.NoiseModule noise = particles.noise;
+        noise.enabled = true;
+        noise.strength = 0.08f;
+        noise.frequency = 0.18f;
+        noise.scrollSpeed = 0.08f;
+        noise.damping = true;
+        noise.octaveCount = 1;
+
+        ParticleSystem.InheritVelocityModule inherit = particles.inheritVelocity;
+        inherit.enabled = true;
+        inherit.mode = ParticleSystemInheritVelocityMode.Initial;
+        inherit.curve = new ParticleSystem.MinMaxCurve(0.12f);
+
+        ParticleSystem.LimitVelocityOverLifetimeModule limit = particles.limitVelocityOverLifetime;
+        limit.enabled = true;
+        limit.limit = 0.55f;
+        limit.dampen = 0.62f;
+
+        ParticleSystem.CollisionModule collision = particles.collision;
+        collision.enabled = true;
+        collision.type = ParticleSystemCollisionType.World;
+        collision.mode = ParticleSystemCollisionMode.Collision3D;
+        collision.dampen = 0.7f;
+        collision.bounce = 0.02f;
+        collision.lifetimeLoss = 0.28f;
+        collision.radiusScale = 0.65f;
+        collision.enableDynamicColliders = false;
+        collision.sendCollisionMessages = false;
+        collision.quality = ParticleSystemCollisionQuality.Medium;
+        collision.maxCollisionShapes = 128;
+
+        renderer.renderMode = ParticleSystemRenderMode.Billboard;
+        renderer.sharedMaterial = edgeDirtMaterial;
+        renderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+        renderer.receiveShadows = false;
+        renderer.minParticleSize = 0.01f;
+        renderer.maxParticleSize = 0.45f;
+    }
+
+    void EnsureEdgeDirtMaterial()
+    {
+        if (edgeDirtTexture == null)
+        {
+            edgeDirtTexture = CreateDirtClodTexture(64);
+        }
+
+        if (edgeDirtMaterial == null)
+        {
+            edgeDirtMaterial = CreateDirtParticleMaterial(edgeDirtTexture);
+        }
+    }
+
+    static Texture2D CreateDirtClodTexture(int size)
+    {
+        size = Mathf.Max(16, size);
+        Texture2D texture = new Texture2D(size, size, TextureFormat.RGBA32, false);
+        texture.name = "PileDirtClod";
+        texture.wrapMode = TextureWrapMode.Clamp;
+        texture.filterMode = FilterMode.Bilinear;
+
+        float half = (size - 1) * 0.5f;
+        for (int y = 0; y < size; y++)
+        {
+            for (int x = 0; x < size; x++)
+            {
+                float dx = (x - half) / half;
+                float dy = (y - half) / half;
+                float lump = 0.22f * Mathf.Sin(dx * 5.2f + dy * 2.1f)
+                    + 0.16f * Mathf.Sin(dx * 11.4f - dy * 8.6f)
+                    + 0.08f * Mathf.Sin(dx * 17.3f + dy * 13.1f);
+                float distance = Mathf.Sqrt(dx * dx + dy * dy) - lump;
+                float t = Mathf.Clamp01(1f - distance * 1.15f);
+                t = t * t * (3f - 2f * t);
+                float alpha = Mathf.Pow(t, 2.1f);
+                texture.SetPixel(x, y, new Color(1f, 1f, 1f, alpha));
+            }
+        }
+
+        texture.Apply(false, true);
+        return texture;
+    }
+
+    static Material CreateDirtParticleMaterial(Texture2D texture)
+    {
+        Shader shader = Shader.Find("Universal Render Pipeline/Particles/Unlit");
+        if (shader == null)
+        {
+            shader = Shader.Find("Universal Render Pipeline/Unlit");
+        }
+
+        if (shader == null)
+        {
+            shader = Shader.Find("Sprites/Default");
+        }
+
+        if (shader == null)
+        {
+            shader = Shader.Find("Particles/Standard Unlit");
+        }
+
+        if (shader == null)
+        {
+            return null;
+        }
+
+        Material material = new Material(shader);
+        material.color = Color.white;
+        if (material.HasProperty("_BaseColor"))
+        {
+            material.SetColor("_BaseColor", Color.white);
+        }
+
+        if (material.HasProperty("_Color"))
+        {
+            material.SetColor("_Color", Color.white);
+        }
+
+        if (texture != null)
+        {
+            if (material.HasProperty("_BaseMap"))
+            {
+                material.SetTexture("_BaseMap", texture);
+            }
+
+            if (material.HasProperty("_MainTex"))
+            {
+                material.SetTexture("_MainTex", texture);
+            }
+
+            material.mainTexture = texture;
+        }
+
+        material.renderQueue = 3000;
+        if (material.HasProperty("_Surface"))
+        {
+            material.SetFloat("_Surface", 1f);
+            material.SetFloat("_Blend", 0f);
+            material.SetFloat("_SrcBlend", (float)UnityEngine.Rendering.BlendMode.SrcAlpha);
+            material.SetFloat("_DstBlend", (float)UnityEngine.Rendering.BlendMode.OneMinusSrcAlpha);
+            material.SetFloat("_SrcBlendAlpha", (float)UnityEngine.Rendering.BlendMode.One);
+            material.SetFloat("_DstBlendAlpha", (float)UnityEngine.Rendering.BlendMode.OneMinusSrcAlpha);
+            material.SetFloat("_ZWrite", 0f);
+            material.EnableKeyword("_SURFACE_TYPE_TRANSPARENT");
+            material.DisableKeyword("_SURFACE_TYPE_OPAQUE");
+            material.SetOverrideTag("RenderType", "Transparent");
+        }
+
+        if (material.HasProperty("_Cull"))
+        {
+            material.SetFloat("_Cull", 0f);
+        }
+
+        return material;
+    }
+
     void IgnoreBlockAndWallCollisions()
     {
         for (int i = 0; i < count; i++)
@@ -3208,6 +3657,7 @@ public class TrashPiles : MonoBehaviour
         RebuildMesh();
         PlaceCorners();
         PlaceEdgeWalls();
+        PlaceEdgeDirt();
     }
 
     void PlaceCorners()
@@ -3277,48 +3727,77 @@ public class TrashPiles : MonoBehaviour
         verts.Clear();
         uvs.Clear();
         tris.Clear();
+        if (corners == null || count < 3)
+        {
+            return;
+        }
 
         float lip = PileTopY();
-        float bottom = 0.02f;
-        float width = ValleyBandWidth();
-        const int valleySteps = 16;
-        const int outerCount = 48;
-        int n = count;
-        int rings = valleySteps + 1;
-        int[] ring = new int[n * rings];
-        for (int i = 0; i < n; i++)
+        float valley = ValleyBandWidth();
+        float spill = Mathf.Max(0.4f, edgeSpillWidth);
+        const int edgeDiv = 18;
+        const int crawlSteps = 8;
+        const int valleySteps = 12;
+        int loopN = count * edgeDiv;
+        int crawlRings = crawlSteps + 1;
+        int rings = crawlRings + valleySteps;
+        int[] ring = new int[loopN * rings];
+
+        for (int k = 0; k < loopN; k++)
         {
-            Vector3 inner = VertexOffset(i);
-            for (int step = 0; step < rings; step++)
+            int edge = k / edgeDiv;
+            float t = (k % edgeDiv) / (float)edgeDiv;
+            Vector3 lipLocal = Vector3.Lerp(VertexOffset(edge), VertexOffset(Wrap(edge + 1)), t);
+            lipLocal.y = 0f;
+            Vector3 outward = SampleSpillOutward(edge, t);
+            float reach = SpillReach(lipLocal, spill);
+            Vector3 inner = ClampSpillInner(lipLocal - outward * reach);
+            Vector3 tangent = new Vector3(outward.z, 0f, -outward.x);
+            float side = (SpillNoise(lipLocal + new Vector3(19.4f, 0f, 7.2f)) - 0.5f) * spill * 0.22f;
+            inner += tangent * side;
+            inner = ClampSpillInner(inner);
+
+            for (int step = 0; step < crawlRings; step++)
             {
-                float d = width * step / valleySteps;
-                ring[i * rings + step] = AddTopVert(WithY(OffsetOut(inner, d), PileSurfaceY(d)));
+                float u = step / (float)crawlSteps;
+                Vector3 pos = Vector3.Lerp(inner, lipLocal, u);
+                pos.y = SpillHeight(u, pos, lip);
+                ring[k * rings + step] = AddTopVert(pos);
+            }
+
+            for (int step = 1; step <= valleySteps; step++)
+            {
+                float d = valley * step / valleySteps;
+                Vector3 pos = OffsetOut(lipLocal, d);
+                pos.y = PileSurfaceY(d);
+                ring[k * rings + crawlSteps + step] = AddTopVert(pos);
             }
         }
 
-        for (int i = 0; i < n; i++)
+        float plateauHeight = PileSurfaceY(valley);
+        for (int k = 0; k < loopN; k++)
         {
-            int next = Wrap(i + 1);
-            Vector3 innerA = VertexOffset(i);
-            Vector3 innerB = VertexOffset(next);
-            for (int step = 0; step < valleySteps; step++)
+            int next = k + 1 < loopN ? k + 1 : 0;
+            for (int step = 0; step < rings - 1; step++)
             {
-                int a0 = ring[i * rings + step];
+                int a0 = ring[k * rings + step];
                 int b0 = ring[next * rings + step];
-                int a1 = ring[i * rings + step + 1];
+                int a1 = ring[k * rings + step + 1];
                 int b1 = ring[next * rings + step + 1];
                 AddTopTri(a0, b1, a1);
                 AddTopTri(a0, b0, b1);
             }
 
-            FanPlateau(
-                ring[i * rings + valleySteps],
-                ring[next * rings + valleySteps],
-                OffsetOut(innerA, width),
-                OffsetOut(innerB, width),
-                PileSurfaceY(width),
-                outerCount);
-            AddWall(WithY(innerA, bottom), WithY(innerB, bottom), WithY(innerB, lip), WithY(innerA, lip));
+            int innerA = ring[k * rings + rings - 1];
+            int innerB = ring[next * rings + rings - 1];
+            Vector3 pa = verts[innerA];
+            Vector3 pb = verts[innerB];
+            pa.y = 0f;
+            pb.y = 0f;
+            int outerA = AddTopVert(WithY(FlatDir(pa) * coverRadius, plateauHeight));
+            int outerB = AddTopVert(WithY(FlatDir(pb) * coverRadius, plateauHeight));
+            AddTopTri(innerA, outerB, outerA);
+            AddTopTri(innerA, innerB, outerB);
         }
 
         pileMesh.Clear();
@@ -3327,6 +3806,65 @@ public class TrashPiles : MonoBehaviour
         pileMesh.SetTriangles(tris, 0);
         pileMesh.RecalculateNormals();
         pileMesh.RecalculateBounds();
+    }
+
+    Vector3 SampleSpillOutward(int edge, float t)
+    {
+        Vector3 outward = EdgeOutward(edge);
+        if (t <= 0.0001f)
+        {
+            Vector3 blended = outward + EdgeOutward(Wrap(edge - 1));
+            if (blended.sqrMagnitude > 0.0001f)
+            {
+                return blended.normalized;
+            }
+        }
+
+        return outward;
+    }
+
+    float SpillReach(Vector3 local, float spill)
+    {
+        float n = SpillNoise(local);
+        float lobes = SpillNoise(local * 1.7f + new Vector3(8.1f, 0f, 3.4f));
+        float mix = Mathf.Clamp01(n * 0.65f + Mathf.Pow(lobes, 1.6f) * 0.55f);
+        return spill * Mathf.Lerp(0.32f, 1.18f, mix);
+    }
+
+    Vector3 ClampSpillInner(Vector3 inner)
+    {
+        inner.y = 0f;
+        float mag = inner.magnitude;
+        float minKeep = Mathf.Max(0.55f, minRadius * 0.3f);
+        if (mag < minKeep && mag > 0.0001f)
+        {
+            inner *= minKeep / mag;
+        }
+        else if (mag <= 0.0001f)
+        {
+            inner = Vector3.forward * minKeep;
+        }
+
+        return inner;
+    }
+
+    float SpillHeight(float u, Vector3 local, float lip)
+    {
+        u = Mathf.Clamp01(u);
+        float rise = u * u * u * (u * (u * 6f - 15f) + 10f);
+        rise = Mathf.Pow(rise, 1.2f);
+        float lump = (SpillNoise(local * 0.85f) - 0.4f) * 0.3f;
+        float ridge = (SpillNoise(local * 1.9f + new Vector3(4.6f, 0f, 11.2f)) - 0.5f) * 0.16f;
+        float y = lip * Mathf.Clamp01(rise + lump * rise) + lip * ridge * rise;
+        return Mathf.Max(0.02f, y);
+    }
+
+    static float SpillNoise(Vector3 local)
+    {
+        float n1 = Mathf.PerlinNoise(local.x * 0.16f + 12.4f, local.z * 0.16f + 3.1f);
+        float n2 = Mathf.PerlinNoise(local.x * 0.41f + 40.2f, local.z * 0.41f);
+        float n3 = Mathf.PerlinNoise(local.x * 0.95f, local.z * 0.95f + 8.7f);
+        return n1 * 0.5f + n2 * 0.32f + n3 * 0.18f;
     }
 
     float ValleyBandWidth()
