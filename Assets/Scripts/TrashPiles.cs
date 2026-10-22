@@ -343,6 +343,32 @@ public class TrashPiles : MonoBehaviour
         return false;
     }
 
+    /// <summary>
+    /// Height of the visible ground at this point: playable floor, pile spill, or raised pile.
+    /// </summary>
+    public float VisualGroundY(Vector3 world)
+    {
+        float floorHeight = 0.02f;
+        float excess = RadialExcess(world);
+        if (excess >= 0f)
+        {
+            return PileSurfaceY(excess);
+        }
+
+        Vector3 local = world - center;
+        local.y = 0f;
+        float spill = Mathf.Max(0.4f, edgeSpillWidth);
+        float reach = SpillReach(local, spill);
+        float inward = -excess;
+        if (reach > 0.01f && inward <= reach)
+        {
+            float u = 1f - inward / reach;
+            return SpillHeight(Mathf.Clamp01(u), local, PileTopY());
+        }
+
+        return floorHeight;
+    }
+
     float RayToPlayEdge(Vector3 origin, Vector3 dir)
     {
         float best = float.PositiveInfinity;
@@ -690,8 +716,7 @@ public class TrashPiles : MonoBehaviour
 
         int needed = Mathf.Max(1, failTrashCount);
         bool crowded = inside >= needed;
-        bool closedIn = PlayHoleHasClosed();
-        if (crowded || closedIn)
+        if (crowded)
         {
             dangerZoneTimer += Time.fixedDeltaTime;
             if (dangerZoneTimer >= failHoldSeconds)
@@ -716,32 +741,9 @@ public class TrashPiles : MonoBehaviour
         return life == BlockLife.Placed || life == BlockLife.Shoving;
     }
 
-    bool PlayHoleHasClosed()
+    float InwardCreepTarget()
     {
-        if (corners == null || corners.Length < 3)
-        {
-            return false;
-        }
-
-        Vector3 centroid = Vector3.zero;
-        for (int i = 0; i < corners.Length; i++)
-        {
-            centroid += corners[i];
-        }
-
-        centroid /= corners.Length;
-        centroid.y = 0f;
-        float hole = DistanceToPlayEdge(centroid);
-        float need = TruckFootprintRadius() + 1.1f;
-        return hole <= need;
-    }
-
-    float TruckFootprintRadius()
-    {
-        Bounds bounds = TruckBounds();
-        float x = bounds.extents.x;
-        float z = bounds.extents.z;
-        return Mathf.Max(1.5f, Mathf.Sqrt(x * x + z * z));
+        return Mathf.Max(0.75f, minRadius);
     }
 
     void OnDrawGizmosSelected()
@@ -1172,7 +1174,7 @@ public class TrashPiles : MonoBehaviour
 
         if (openingHeadStart != null)
         {
-            openingHeadStart[target] = nearTruck ? 0f : respawnHeadStart;
+            openingHeadStart[target] = nearTruck ? Mathf.Max(respawnHeadStart, 0.7f) : respawnHeadStart;
         }
 
         BeginCrawl(target);
@@ -1185,11 +1187,10 @@ public class TrashPiles : MonoBehaviour
         int best = -1;
         float bestScore = float.NegativeInfinity;
 
-        // Prefer edges away from the truck and not beside live trash.
-        for (int pass = 0; pass < 4; pass++)
+        // Prefer the truck's circle so three landed pieces can actually overlap there.
+        for (int pass = 0; pass < 2; pass++)
         {
-            bool requireOpenSide = pass == 0 || pass == 2;
-            bool avoidDanger = pass < 2;
+            bool requireOpenSide = pass == 0;
             best = -1;
             bestScore = float.NegativeInfinity;
             for (int candidate = 0; candidate < count; candidate++)
@@ -1200,11 +1201,6 @@ public class TrashPiles : MonoBehaviour
                 }
 
                 if (requireOpenSide && HasLiveNeighbor(candidate))
-                {
-                    continue;
-                }
-
-                if (avoidDanger && EdgeInDangerZone(candidate))
                 {
                     continue;
                 }
@@ -1220,7 +1216,7 @@ public class TrashPiles : MonoBehaviour
 
             if (best >= 0)
             {
-                nearTruck = !avoidDanger;
+                nearTruck = EdgeInDangerZone(best);
                 return best;
             }
         }
@@ -1230,42 +1226,12 @@ public class TrashPiles : MonoBehaviour
 
     float SpreadScoreForEdge(int index)
     {
-        if (HasLiveNeighbor(index))
-        {
-            // Strong penalty so adjacent edges almost never win when a farther slot exists.
-            return -1000f + EdgeSeparation(index, lastSpawnEdge >= 0 ? lastSpawnEdge : index) * 0.01f;
-        }
-
-        Vector3 point = EdgeMid(index);
+        Vector3 point = BlockPosition(index);
         point.y = 0f;
-        float nearest = float.PositiveInfinity;
-        bool anyLive = false;
-        for (int i = 0; i < count; i++)
-        {
-            if (i == index || !EdgeHasLiveTrash(i))
-            {
-                continue;
-            }
-
-            anyLive = true;
-            nearest = Mathf.Min(nearest, EdgeSeparation(index, i));
-        }
-
         Vector3 truck = transform.position;
         truck.y = 0f;
-        float fromTruck = Vector3.Distance(point, truck);
-
-        if (!anyLive)
-        {
-            if (lastSpawnEdge < 0)
-            {
-                return fromTruck;
-            }
-
-            return EdgeSeparation(index, lastSpawnEdge) + fromTruck * 0.25f;
-        }
-
-        return nearest + fromTruck * 0.25f;
+        float neighborPenalty = HasLiveNeighbor(index) ? 1.25f : 0f;
+        return -Vector3.Distance(point, truck) - neighborPenalty;
     }
 
     bool HasLiveNeighbor(int index)
@@ -1486,6 +1452,11 @@ public class TrashPiles : MonoBehaviour
     {
         blockLife[index] = BlockLife.Placed;
         despawnLeft[index] = Random.Range(pushWindowMin, pushWindowMax);
+        if (EdgeInDangerZone(index))
+        {
+            despawnLeft[index] += failHoldSeconds;
+        }
+
         SetBlockInteractable(index, true);
         SetBlockVisible(index, true);
         Vector3 pos = BlockPosition(index);
@@ -3680,7 +3651,7 @@ public class TrashPiles : MonoBehaviour
 
     void ApplyIdleOrCreep()
     {
-        float target = Mathf.Max(minRadius, borderRadius);
+        float target = InwardCreepTarget();
         bool moved = false;
 
         for (int i = 0; i < count; i++)
@@ -3816,15 +3787,9 @@ public class TrashPiles : MonoBehaviour
         {
             int edge = k / edgeDiv;
             float t = (k % edgeDiv) / (float)edgeDiv;
+            Vector3 inner = SpillInnerLocal(edge, t, spill);
             Vector3 lipLocal = Vector3.Lerp(VertexOffset(edge), VertexOffset(Wrap(edge + 1)), t);
             lipLocal.y = 0f;
-            Vector3 outward = SampleSpillOutward(edge, t);
-            float reach = SpillReach(lipLocal, spill);
-            Vector3 inner = ClampSpillInner(lipLocal - outward * reach);
-            Vector3 tangent = new Vector3(outward.z, 0f, -outward.x);
-            float side = (SpillNoise(lipLocal + new Vector3(19.4f, 0f, 7.2f)) - 0.5f) * spill * 0.22f;
-            inner += tangent * side;
-            inner = ClampSpillInner(inner);
 
             for (int step = 0; step < crawlRings; step++)
             {
@@ -3875,6 +3840,19 @@ public class TrashPiles : MonoBehaviour
         pileMesh.SetTriangles(tris, 0);
         pileMesh.RecalculateNormals();
         pileMesh.RecalculateBounds();
+    }
+
+    Vector3 SpillInnerLocal(int edge, float t, float spill)
+    {
+        Vector3 lipLocal = Vector3.Lerp(VertexOffset(edge), VertexOffset(Wrap(edge + 1)), t);
+        lipLocal.y = 0f;
+        Vector3 outward = SampleSpillOutward(edge, t);
+        float reach = SpillReach(lipLocal, spill);
+        Vector3 inner = ClampSpillInner(lipLocal - outward * reach);
+        Vector3 tangent = new Vector3(outward.z, 0f, -outward.x);
+        float side = (SpillNoise(lipLocal + new Vector3(19.4f, 0f, 7.2f)) - 0.5f) * spill * 0.22f;
+        inner += tangent * side;
+        return ClampSpillInner(inner);
     }
 
     Vector3 SampleSpillOutward(int edge, float t)
@@ -4116,7 +4094,7 @@ public class TrashPiles : MonoBehaviour
         float prevDist = FlatDistanceFromCenter(prev);
         float nextDist = FlatDistanceFromCenter(next);
         float maxDelta = Mathf.Max(0.35f, maxNeighborRadiusDelta);
-        float minAllowed = Mathf.Max(minRadius, Mathf.Min(prevDist, nextDist) - maxDelta);
+        float minAllowed = Mathf.Max(InwardCreepTarget(), Mathf.Min(prevDist, nextDist) - maxDelta);
         float maxAllowed = Mathf.Max(prevDist, nextDist) + maxDelta;
         dist = Mathf.Clamp(dist, minAllowed, Mathf.Min(maxAllowed, MaxRadius(dir)));
         corners[index] = center + dir * dist;
@@ -4140,8 +4118,8 @@ public class TrashPiles : MonoBehaviour
         if (len < 0.0001f)
         {
             Vector3 split = Quaternion.Euler(0f, (360f / count) * 0.5f, 0f) * CornerRadial(index);
-            corners[index] = center + FlatDir(corners[index] - center) * Mathf.Max(minRadius, FlatDistanceFromCenter(index));
-            corners[next] = center + FlatDir(split) * Mathf.Max(minRadius, FlatDistanceFromCenter(next));
+            corners[index] = center + FlatDir(corners[index] - center) * Mathf.Max(InwardCreepTarget(), FlatDistanceFromCenter(index));
+            corners[next] = center + FlatDir(split) * Mathf.Max(InwardCreepTarget(), FlatDistanceFromCenter(next));
             ClampRadiusOnly(index);
             ClampRadiusOnly(next);
             return;
@@ -4163,7 +4141,7 @@ public class TrashPiles : MonoBehaviour
         Vector3 b = corners[next];
         a.y = 0f;
         b.y = 0f;
-        float clear = Mathf.Max(minRadius, cubeExtent + 0.35f);
+        float clear = InwardCreepTarget();
         float dist = DistancePointToSegmentXZ(center, a, b);
         if (dist >= clear)
         {
@@ -4267,7 +4245,7 @@ public class TrashPiles : MonoBehaviour
     {
         Vector3 offset = corners[index] - center;
         offset.y = 0f;
-        return Mathf.Max(minRadius, offset.magnitude);
+        return Mathf.Max(InwardCreepTarget(), offset.magnitude);
     }
 
     void ClampRadiusOnly(int index)
@@ -4281,7 +4259,7 @@ public class TrashPiles : MonoBehaviour
 
         float dist = offset.magnitude;
         Vector3 dir = offset / dist;
-        dist = Mathf.Clamp(dist, minRadius, MaxRadius(dir));
+        dist = Mathf.Clamp(dist, InwardCreepTarget(), MaxRadius(dir));
         corners[index] = center + dir * dist;
     }
 
@@ -4299,7 +4277,7 @@ public class TrashPiles : MonoBehaviour
     {
         Vector3 offset = corners[index] - center;
         offset.y = 0f;
-        float radius = Mathf.Max(minRadius, offset.magnitude);
+        float radius = Mathf.Max(InwardCreepTarget(), offset.magnitude);
         float prevAngle = Mathf.Atan2(corners[prev].z - center.z, corners[prev].x - center.x);
         float nextAngle = Mathf.Atan2(corners[next].z - center.z, corners[next].x - center.x);
         float angle = Mathf.Atan2(offset.z, offset.x);
@@ -4317,7 +4295,7 @@ public class TrashPiles : MonoBehaviour
         }
 
         Vector3 dir = new Vector3(Mathf.Cos(angle), 0f, Mathf.Sin(angle));
-        radius = Mathf.Clamp(radius, minRadius, MaxRadius(dir));
+        radius = Mathf.Clamp(radius, InwardCreepTarget(), MaxRadius(dir));
         corners[index] = center + dir * radius;
     }
 

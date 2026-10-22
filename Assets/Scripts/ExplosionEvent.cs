@@ -238,20 +238,25 @@ public class ExplosionEvent : MonoBehaviour
 
     void CacheFloorY()
     {
-        floorY = 0.06f;
+        floorY = 0.03f;
         if (floor == null)
         {
             return;
         }
 
-        Renderer renderer = floor.GetComponent<Renderer>();
-        if (renderer != null)
+        floorY = floor.position.y + 0.03f;
+    }
+
+    void SnapToGround(ref Vector3 pos)
+    {
+        CacheFloorY();
+        float y = floorY;
+        if (piles != null)
         {
-            floorY = renderer.bounds.max.y + 0.06f;
-            return;
+            y = Mathf.Max(y, piles.VisualGroundY(pos) + 0.03f);
         }
 
-        floorY = floor.position.y + 0.06f;
+        pos.y = y;
     }
 
     void ScheduleNext(BlastSlot slot, bool first)
@@ -280,21 +285,20 @@ public class ExplosionEvent : MonoBehaviour
 
     void BeginWarning(BlastSlot slot)
     {
-        CacheFloorY();
-        if (piles == null || !TrySampleBlastPoint(out slot.blastPos))
+        slot.activeBlastRadius = CurrentBlastRadius();
+        if (piles == null || !TrySampleBlastPoint(out slot.blastPos, slot.activeBlastRadius))
         {
             slot.waitLeft = 1.5f;
             slot.phase = BlastPhase.Waiting;
             return;
         }
 
-        slot.blastPos.y = floorY;
-        slot.activeBlastRadius = CurrentBlastRadius();
+        SnapToGround(ref slot.blastPos);
         if (slot.warningRoot != null)
         {
             float radius = slot.activeBlastRadius;
             slot.warningRoot.SetPositionAndRotation(slot.blastPos, Quaternion.identity);
-            slot.warningRoot.localScale = new Vector3(radius * 2f, 1f, radius * 2f);
+            slot.warningRoot.localScale = new Vector3(radius * 2f, 0.02f, radius * 2f);
             slot.warningRoot.gameObject.SetActive(true);
         }
 
@@ -307,9 +311,10 @@ public class ExplosionEvent : MonoBehaviour
         RefreshWarningSound();
     }
 
-    bool TrySampleBlastPoint(out Vector3 point)
+    bool TrySampleBlastPoint(out Vector3 point, float blastRadius)
     {
         point = Vector3.zero;
+        float inset = Mathf.Max(edgeInset, blastRadius);
         float minSepSq = multiBlastSeparation * multiBlastSeparation;
         Vector3 truckFlat = truck != null ? truck.transform.position : Vector3.zero;
         truckFlat.y = 0f;
@@ -320,7 +325,7 @@ public class ExplosionEvent : MonoBehaviour
         int attempts = bias > 0.05f ? 36 : 24;
         for (int attempt = 0; attempt < attempts; attempt++)
         {
-            if (!piles.TrySamplePlayAreaPoint(out Vector3 candidate, edgeInset))
+            if (!piles.TrySamplePlayAreaPoint(out Vector3 candidate, inset))
             {
                 break;
             }
@@ -376,7 +381,7 @@ public class ExplosionEvent : MonoBehaviour
             return true;
         }
 
-        return piles.TrySamplePlayAreaPoint(out point, edgeInset);
+        return piles.TrySamplePlayAreaPoint(out point, inset);
     }
 
     float CurrentWarningSeconds()
@@ -669,7 +674,7 @@ public class ExplosionEvent : MonoBehaviour
         }
 
         GameObject burst = new GameObject("ExplosionBoom");
-        burst.transform.position = origin + Vector3.up * 1.55f;
+        burst.transform.position = origin + Vector3.up * 0.2f;
         ParticleSystem particles = burst.AddComponent<ParticleSystem>();
         particles.Stop(true, ParticleSystemStopBehavior.StopEmittingAndClear);
         ConfigureBoomParticles(particles, burst.GetComponent<ParticleSystemRenderer>(), blastRadius);
