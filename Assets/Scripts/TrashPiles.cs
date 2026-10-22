@@ -689,9 +689,7 @@ public class TrashPiles : MonoBehaviour
         }
 
         int needed = Mathf.Max(1, failTrashCount);
-        bool crowded = inside >= needed;
-        bool closedIn = PlayHoleHasClosed();
-        if (crowded || closedIn)
+        if (inside >= needed)
         {
             dangerZoneTimer += Time.fixedDeltaTime;
             if (dangerZoneTimer >= failHoldSeconds)
@@ -714,34 +712,6 @@ public class TrashPiles : MonoBehaviour
 
         BlockLife life = blockLife[index];
         return life == BlockLife.Placed || life == BlockLife.Shoving;
-    }
-
-    bool PlayHoleHasClosed()
-    {
-        if (corners == null || corners.Length < 3)
-        {
-            return false;
-        }
-
-        Vector3 centroid = Vector3.zero;
-        for (int i = 0; i < corners.Length; i++)
-        {
-            centroid += corners[i];
-        }
-
-        centroid /= corners.Length;
-        centroid.y = 0f;
-        float hole = DistanceToPlayEdge(centroid);
-        float need = TruckFootprintRadius() + 1.1f;
-        return hole <= need;
-    }
-
-    float TruckFootprintRadius()
-    {
-        Bounds bounds = TruckBounds();
-        float x = bounds.extents.x;
-        float z = bounds.extents.z;
-        return Mathf.Max(1.5f, Mathf.Sqrt(x * x + z * z));
     }
 
     void OnDrawGizmosSelected()
