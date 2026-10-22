@@ -1436,8 +1436,11 @@ public class TrashPiles : MonoBehaviour
 
         PrepareConsumeFade(index);
         float urgency = 1f - Mathf.Clamp01(despawnLeft[index] / warn);
-        float interval = Mathf.Lerp(2.8f, 2f, urgency);
-        float wave = 0.5f + 0.5f * Mathf.Sin((Time.time / interval + index * 0.17f) * Mathf.PI * 2f);
+        float interval = Mathf.Lerp(1.05f, 0.5f, urgency);
+        // Warning-window time, not Time.time: scene reloads do not reset Time.time, so
+        // Time.time / a shrinking interval strobes after the first game.
+        float elapsed = warn - Mathf.Max(0f, despawnLeft[index]);
+        float wave = 0.5f + 0.5f * Mathf.Sin((elapsed / interval + index * 0.17f) * Mathf.PI * 2f);
         SetBlockOpacity(index, Mathf.Lerp(0.18f, 1f, wave));
     }
 
