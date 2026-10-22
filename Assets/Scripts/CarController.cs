@@ -16,6 +16,7 @@ public class CarController : MonoBehaviour
     [SerializeField] float armRotateSpeed = 120f;
     [SerializeField] float loweredSpeedFactor = 0.7f;
     [SerializeField] float raisedSpeedFactor = 1.5f;
+    [SerializeField, Tooltip("Speed scale when headlights are on during day or off at night.")] float wrongHeadlightSpeedFactor = 0.8f;
     [SerializeField] float headlightRange = 48f;
     [SerializeField] float headlightAngle = 64f;
     [SerializeField] float headlightIntensity = 2800f;
@@ -1446,6 +1447,10 @@ public class CarController : MonoBehaviour
         }
 
         float speedCap = maxSpeed * Mathf.Lerp(loweredSpeedFactor, raisedSpeedFactor, raiseT);
+        if (lightsWrongForTime)
+        {
+            speedCap *= wrongHeadlightSpeedFactor;
+        }
 
         if (moveDir.sqrMagnitude > 0.01f)
         {

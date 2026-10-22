@@ -6,6 +6,7 @@ using UnityEngine;
 
 // Reads PRESS:W / RELEASE:W lines from a custom Arduino controller.
 // Gameplay should go through GameInput so keyboard, gamepad, and Arduino all work.
+// Connection and each press/release are logged to the Unity Console.
 [DefaultExecutionOrder(-300)]
 public class ArduinoController : MonoBehaviour
 {
@@ -106,6 +107,9 @@ public class ArduinoController : MonoBehaviour
 
     public static bool ConfirmPressedThisFrame =>
         PressedThisFrame("ENTER") || PressedThisFrame("RETURN") || PressedThisFrame("NUMPADENTER");
+
+    public static bool ConfirmHeld =>
+        Held("ENTER") || Held("RETURN") || Held("NUMPADENTER");
 
     public static bool Held(string keyName)
     {
@@ -370,6 +374,7 @@ public class ArduinoController : MonoBehaviour
         string[] parts = line.Split(':');
         if (parts.Length != 2)
         {
+            Debug.Log("ArduinoController: read \"" + line + "\"");
             return;
         }
 
@@ -377,6 +382,7 @@ public class ArduinoController : MonoBehaviour
         string key = NormalizeKey(parts[1]);
         if (key.Length == 0)
         {
+            Debug.Log("ArduinoController: read \"" + line + "\"");
             return;
         }
 
@@ -385,11 +391,52 @@ public class ArduinoController : MonoBehaviour
             if (heldKeys.Add(key))
             {
                 pressedThisFrame.Add(key);
+                Debug.Log("ArduinoController: pressed " + DescribeControl(key, true));
             }
         }
         else if (action == "RELEASE")
         {
-            heldKeys.Remove(key);
+            if (heldKeys.Remove(key))
+            {
+                Debug.Log("ArduinoController: released " + DescribeControl(key, false));
+            }
+        }
+        else
+        {
+            Debug.Log("ArduinoController: read \"" + line + "\"");
+        }
+    }
+
+    static string DescribeControl(string key, bool pressed)
+    {
+        switch (key)
+        {
+            case "W":
+                return "up / forward";
+            case "S":
+                return "down / reverse";
+            case "A":
+                return "left";
+            case "D":
+                return "right";
+            case "UP":
+            case "UPARROW":
+                return pressed ? "arm switch (lowers the arm)" : "arm switch (raises the arm)";
+            case "DOWN":
+            case "DOWNARROW":
+                return "down switch";
+            case "LEFT":
+            case "LEFTARROW":
+                return "horn";
+            case "RIGHT":
+            case "RIGHTARROW":
+                return "headlights";
+            case "ENTER":
+            case "RETURN":
+            case "NUMPADENTER":
+                return "confirm";
+            default:
+                return key;
         }
     }
 
