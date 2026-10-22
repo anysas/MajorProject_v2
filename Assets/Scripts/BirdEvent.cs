@@ -102,6 +102,7 @@ public class BirdEvent : MonoBehaviour
         }
 
         CacheBirdModelOffset();
+        PrepareFlapClipForPlayer();
         ScheduleNextBird();
     }
 
@@ -123,6 +124,7 @@ public class BirdEvent : MonoBehaviour
         fleeSpeed = Mathf.Max(1f, fleeSpeed);
         hornVolume = Mathf.Clamp01(hornVolume);
         CacheBirdModelOffset();
+        PrepareFlapClipForPlayer();
     }
 
     void CacheBirdModelOffset()
@@ -611,6 +613,7 @@ public class BirdEvent : MonoBehaviour
         playback.playable = AnimationClipPlayable.Create(playback.graph, clip);
         playback.length = Mathf.Max(0.01f, clip.length);
         float cycle = (index + Random.Range(0.05f, 0.85f)) / Mathf.Max(1, FlockCount);
+        playback.playable.SetDuration(playback.length);
         playback.playable.SetTime(playback.length * Mathf.Repeat(cycle, 1f));
         playback.playable.SetSpeed(Mathf.Max(0.1f, flapSpeed));
         output.SetSourcePlayable(playback.playable);
@@ -658,6 +661,11 @@ public class BirdEvent : MonoBehaviour
         flaps = null;
     }
 
+    public AnimationClip PrepareFlapClipForPlayer()
+    {
+        return FindFlapClip();
+    }
+
     AnimationClip FindFlapClip()
     {
         if (flapClip != null)
@@ -665,23 +673,103 @@ public class BirdEvent : MonoBehaviour
             return flapClip;
         }
 
+        flapClip = PickFlapClip(ClipsFromAnimator(birdPrefab));
+        if (flapClip != null)
+        {
+            return flapClip;
+        }
+
 #if UNITY_EDITOR
-        if (birdPrefab == null)
+        flapClip = PickFlapClip(ClipsFromImportedModel(birdPrefab));
+        if (flapClip != null)
+        {
+            return flapClip;
+        }
+#endif
+
+        flapClip = PickFlapClip(Resources.LoadAll<AnimationClip>("Bird"));
+        if (flapClip != null)
+        {
+            return flapClip;
+        }
+
+#if !UNITY_EDITOR
+        flapClip = PickFlapClip(Resources.FindObjectsOfTypeAll<AnimationClip>(), true);
+#endif
+        return flapClip;
+    }
+
+    static AnimationClip[] ClipsFromAnimator(GameObject root)
+    {
+        if (root == null)
         {
             return null;
         }
 
-        string path = AssetDatabase.GetAssetPath(birdPrefab);
+        Animator animator = root.GetComponentInChildren<Animator>();
+        if (animator == null || animator.runtimeAnimatorController == null)
+        {
+            return null;
+        }
+
+        return animator.runtimeAnimatorController.animationClips;
+    }
+
+#if UNITY_EDITOR
+    static AnimationClip[] ClipsFromImportedModel(GameObject root)
+    {
+        if (root == null)
+        {
+            return null;
+        }
+
+        string path = AssetDatabase.GetAssetPath(root);
         if (string.IsNullOrEmpty(path))
         {
             return null;
         }
 
         Object[] assets = AssetDatabase.LoadAllAssetsAtPath(path);
-        AnimationClip fallback = null;
+        AnimationClip[] clips = new AnimationClip[assets.Length];
+        int count = 0;
         for (int i = 0; i < assets.Length; i++)
         {
             AnimationClip clip = assets[i] as AnimationClip;
+            if (clip == null)
+            {
+                continue;
+            }
+
+            clips[count] = clip;
+            count++;
+        }
+
+        if (count == clips.Length)
+        {
+            return clips;
+        }
+
+        AnimationClip[] trimmed = new AnimationClip[count];
+        for (int i = 0; i < count; i++)
+        {
+            trimmed[i] = clips[i];
+        }
+
+        return trimmed;
+    }
+#endif
+
+    static AnimationClip PickFlapClip(AnimationClip[] clips, bool namedOnly = false)
+    {
+        if (clips == null || clips.Length == 0)
+        {
+            return null;
+        }
+
+        AnimationClip fallback = null;
+        for (int i = 0; i < clips.Length; i++)
+        {
+            AnimationClip clip = clips[i];
             if (clip == null || clip.name.StartsWith("__preview__"))
             {
                 continue;
@@ -689,19 +777,16 @@ public class BirdEvent : MonoBehaviour
 
             if (clip.name.IndexOf("flap", System.StringComparison.OrdinalIgnoreCase) >= 0)
             {
-                flapClip = clip;
-                return flapClip;
+                return clip;
             }
 
-            if (fallback == null)
+            if (!namedOnly && fallback == null)
             {
                 fallback = clip;
             }
         }
 
-        flapClip = fallback;
-#endif
-        return flapClip;
+        return fallback;
     }
 
     void ClearBirds()
