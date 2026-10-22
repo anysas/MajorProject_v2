@@ -5306,14 +5306,15 @@ MonoBehaviour:
   maxSpeed: 17.8
   acceleration: 70
   deceleration: 80
-  turnSpeed: 400
+  turnSpeed: 533.7
+  turnSmoothTime: 0.04
   wheelRadius: 0.75
   armRestX: -100
   armRaisedX: -145
   armRotateSpeed: 166.9
   loweredSpeedFactor: 0.6
   raisedSpeedFactor: 1.7
-  wrongHeadlightSpeedFactor: 0.85
+  wrongHeadlightSpeedFactor: 0.7
   headlightRange: 48
   headlightAngle: 64
   headlightIntensity: 2800
@@ -5385,7 +5386,7 @@ MonoBehaviour:
   playAreaMargin: 3
   gameSectionFill: 0.995
   dangerZoneRadius: 10.84
-  failTrashCount: 2
+  failTrashCount: 3
   failHoldSeconds: 1.8
   frontPushDot: 0
   pushReach: 0.65

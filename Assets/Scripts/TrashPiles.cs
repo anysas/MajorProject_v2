@@ -47,7 +47,6 @@ public class TrashPiles : MonoBehaviour
     [SerializeField, Min(0.5f), Tooltip("Radius of the invisible circle that follows the truck.")] float dangerZoneRadius = 5.5f;
     [SerializeField, Min(1), Tooltip("How many trash objects must stay inside the circle to start the fail timer.")] int failTrashCount = 3;
     [SerializeField, Min(0.05f), Tooltip("How long 3+ trash objects must remain inside the circle before game over.")] float failHoldSeconds = 2f;
-    [SerializeField, Range(60f, 300f), Tooltip("Trash must wrap at least this far around the truck to fail. A tight cluster of short edges does not count.")] float failSurroundDegrees = 140f;
     [SerializeField, Range(-0.2f, 0.95f), Tooltip("How centered a block must be in front of the truck to be pushable. Lower = wider front cone.")] float frontPushDot = 0f;
     [SerializeField, Tooltip("How close the truck can be, in metres, and still shove a piece it has not quite touched.")] float pushReach = 0.65f;
     [SerializeField] Material pileMaterial;
@@ -150,7 +149,6 @@ public class TrashPiles : MonoBehaviour
     readonly List<Vector2> uvs = new List<Vector2>(2048);
     readonly List<int> tris = new List<int>(4096);
     readonly List<Vector3> sectorOuter = new List<Vector3>(64);
-    readonly List<float> failArc = new List<float>(12);
     static MaterialPropertyBlock sharedFadeBlock;
     Vector3[] decorativeRing;
     Vector3[] gameSectionRing;
@@ -208,7 +206,6 @@ public class TrashPiles : MonoBehaviour
         dangerZoneRadius = Mathf.Max(0.5f, dangerZoneRadius);
         failTrashCount = Mathf.Max(1, failTrashCount);
         failHoldSeconds = Mathf.Max(0.05f, failHoldSeconds);
-        failSurroundDegrees = Mathf.Clamp(failSurroundDegrees, 60f, 300f);
         frontPushDot = Mathf.Clamp(frontPushDot, -0.2f, 0.95f);
         pushReach = Mathf.Clamp(pushReach, 0.15f, 1.5f);
         startSpread = Mathf.Max(0.25f, startSpread);
@@ -674,7 +671,6 @@ public class TrashPiles : MonoBehaviour
         origin.y = 0f;
         float radius = Mathf.Max(0.5f, dangerZoneRadius);
         float radiusSq = radius * radius;
-        failArc.Clear();
         int inside = 0;
         int n = Mathf.Min(count, Mathf.Min(cornerBlocks.Length, blockLife.Length));
         for (int i = 0; i < n; i++)
@@ -686,18 +682,16 @@ public class TrashPiles : MonoBehaviour
 
             Vector3 pos = ActiveBlockPosition(i);
             pos.y = 0f;
-            Vector3 to = pos - origin;
-            if (to.sqrMagnitude > radiusSq)
+            if ((pos - origin).sqrMagnitude <= radiusSq)
             {
-                continue;
+                inside++;
             }
-
-            inside++;
-            failArc.Add(Mathf.Atan2(to.z, to.x));
         }
 
         int needed = Mathf.Max(1, failTrashCount);
-        if (inside >= needed && FailArcSurroundsTruck())
+        bool crowded = inside >= needed;
+        bool closedIn = PlayHoleHasClosed();
+        if (crowded || closedIn)
         {
             dangerZoneTimer += Time.fixedDeltaTime;
             if (dangerZoneTimer >= failHoldSeconds)
@@ -718,36 +712,36 @@ public class TrashPiles : MonoBehaviour
             return false;
         }
 
-        if (blockLife[index] != BlockLife.Placed)
-        {
-            return false;
-        }
-
-        if (overlapCount != null && index < overlapCount.Length && overlapCount[index] > 0)
-        {
-            return false;
-        }
-
-        return !IsFrontPush(index, transform);
+        BlockLife life = blockLife[index];
+        return life == BlockLife.Placed || life == BlockLife.Shoving;
     }
 
-    bool FailArcSurroundsTruck()
+    bool PlayHoleHasClosed()
     {
-        int n = failArc.Count;
-        if (n < 2)
+        if (corners == null || corners.Length < 3)
         {
             return false;
         }
 
-        failArc.Sort();
-        float largestGap = failArc[0] + Mathf.PI * 2f - failArc[n - 1];
-        for (int i = 1; i < n; i++)
+        Vector3 centroid = Vector3.zero;
+        for (int i = 0; i < corners.Length; i++)
         {
-            largestGap = Mathf.Max(largestGap, failArc[i] - failArc[i - 1]);
+            centroid += corners[i];
         }
 
-        float span = 360f - largestGap * Mathf.Rad2Deg;
-        return span >= failSurroundDegrees;
+        centroid /= corners.Length;
+        centroid.y = 0f;
+        float hole = DistanceToPlayEdge(centroid);
+        float need = TruckFootprintRadius() + 1.1f;
+        return hole <= need;
+    }
+
+    float TruckFootprintRadius()
+    {
+        Bounds bounds = TruckBounds();
+        float x = bounds.extents.x;
+        float z = bounds.extents.z;
+        return Mathf.Max(1.5f, Mathf.Sqrt(x * x + z * z));
     }
 
     void OnDrawGizmosSelected()

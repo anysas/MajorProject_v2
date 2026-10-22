@@ -10,13 +10,14 @@ public class CarController : MonoBehaviour
     [SerializeField] float acceleration = 70f;
     [SerializeField] float deceleration = 80f;
     [SerializeField] float turnSpeed = 240f;
+    [SerializeField, Min(0.04f), Tooltip("How long the truck takes to ease into a new heading. Higher is slower and smoother.")] float turnSmoothTime = 0.2f;
     [SerializeField] float wheelRadius = 0.75f;
     [SerializeField] float armRestX = -100f;
     [SerializeField] float armRaisedX = -55f;
     [SerializeField] float armRotateSpeed = 120f;
     [SerializeField] float loweredSpeedFactor = 0.7f;
     [SerializeField] float raisedSpeedFactor = 1.5f;
-    [SerializeField, Tooltip("Speed scale when headlights are on during day or off at night.")] float wrongHeadlightSpeedFactor = 0.8f;
+    [SerializeField, Tooltip("Speed scale when headlights are on during day or off at night.")] float wrongHeadlightSpeedFactor = 0.7f;
     [SerializeField] float headlightRange = 48f;
     [SerializeField] float headlightAngle = 64f;
     [SerializeField] float headlightIntensity = 2800f;
@@ -44,6 +45,7 @@ public class CarController : MonoBehaviour
     Material dirtMaterial;
     Texture2D dirtTexture;
     bool dirtSpraying;
+    float yawVelocity;
 
     enum ArmState
     {
@@ -1434,6 +1436,7 @@ public class CarController : MonoBehaviour
         if (!ExperienceRestart.IsActive || stunLeft > 0f)
         {
             DriveVelocity = Vector3.zero;
+            yawVelocity = 0f;
             rb.linearVelocity = new Vector3(0f, 0f, 0f);
             return;
         }
@@ -1459,14 +1462,34 @@ public class CarController : MonoBehaviour
 
         if (moveDir.sqrMagnitude > 0.01f)
         {
-            float speed = Mathf.MoveTowards(horizontal.magnitude, speedCap, acceleration * Time.fixedDeltaTime);
-            horizontal = moveDir * speed;
-
             Quaternion targetRotation = Quaternion.LookRotation(moveDir, Vector3.up);
-            rb.MoveRotation(Quaternion.RotateTowards(rb.rotation, targetRotation, turnSpeed * Time.fixedDeltaTime));
+            float currentYaw = rb.rotation.eulerAngles.y;
+            float targetYaw = targetRotation.eulerAngles.y;
+            float yaw = Mathf.SmoothDampAngle(
+                currentYaw,
+                targetYaw,
+                ref yawVelocity,
+                Mathf.Max(0.04f, turnSmoothTime),
+                Mathf.Max(1f, turnSpeed),
+                Time.fixedDeltaTime);
+            Quaternion nextRotation = Quaternion.Euler(0f, yaw, 0f);
+            rb.MoveRotation(nextRotation);
+
+            float turnAmount = Mathf.Abs(Mathf.DeltaAngle(currentYaw, targetYaw)) / 180f;
+            float speedCapNow = speedCap * Mathf.Lerp(1f, 0.55f, turnAmount);
+            float speed = Mathf.MoveTowards(horizontal.magnitude, speedCapNow, acceleration * Time.fixedDeltaTime);
+            Vector3 facing = nextRotation * Vector3.forward;
+            facing.y = 0f;
+            if (facing.sqrMagnitude < 0.0001f)
+            {
+                facing = moveDir;
+            }
+
+            horizontal = facing.normalized * speed;
         }
         else
         {
+            yawVelocity = Mathf.MoveTowards(yawVelocity, 0f, Mathf.Max(1f, turnSpeed) * Time.fixedDeltaTime);
             horizontal = Vector3.MoveTowards(horizontal, Vector3.zero, deceleration * Time.fixedDeltaTime);
         }
 
